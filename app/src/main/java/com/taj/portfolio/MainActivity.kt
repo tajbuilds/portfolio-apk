@@ -26,9 +26,12 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Work
@@ -38,10 +41,12 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -49,6 +54,8 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -216,20 +223,33 @@ private fun HomeScreen(
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(16.dp),
                 ) {
-                    AsyncImage(
-                        model = state.profile?.avatarUrl?.let(::absoluteUrl),
-                        contentDescription = state.profile?.name,
-                        modifier = Modifier
-                            .size(72.dp)
-                            .padding(bottom = 10.dp),
-                    )
-                    Text(
-                        state.profile?.name.orEmpty(),
-                        style = MaterialTheme.typography.headlineMedium,
-                        fontWeight = FontWeight.Bold,
-                    )
-                    Text(state.profile?.role.orEmpty(), style = MaterialTheme.typography.titleMedium)
-                    Text(state.profile?.location.orEmpty(), style = MaterialTheme.typography.bodyMedium)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                    ) {
+                        AsyncImage(
+                            model = state.profile?.avatarUrl?.let(::absoluteUrl),
+                            contentDescription = state.profile?.name,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .size(72.dp)
+                                .clip(CircleShape),
+                        )
+                        Column {
+                            Text(
+                                state.profile?.name.orEmpty(),
+                                style = MaterialTheme.typography.headlineSmall,
+                                fontWeight = FontWeight.Bold,
+                            )
+                            Text(state.profile?.role.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                            Text(
+                                state.profile?.location.orEmpty(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            )
+                        }
+                    }
                     Text(state.profile?.tagline.orEmpty(), modifier = Modifier.padding(top = 8.dp))
                     Row(
                         modifier = Modifier.padding(top = 12.dp),
@@ -245,7 +265,7 @@ private fun HomeScreen(
                             }) {
                                 Text(cta.primary.label)
                             }
-                            Button(onClick = { openUrl(context, absoluteUrl(cta.secondary.path)) }) {
+                            OutlinedButton(onClick = { openUrl(context, absoluteUrl(cta.secondary.path)) }) {
                                 Text(cta.secondary.label)
                             }
                         }
@@ -297,14 +317,17 @@ private fun WorkCard(item: WorkSummary, onClick: () -> Unit) {
             AsyncImage(
                 model = absoluteUrl(item.coverImageUrl),
                 contentDescription = item.title,
+                contentScale = ContentScale.Crop,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(150.dp),
+                    .height(160.dp)
+                    .clip(RoundedCornerShape(12.dp)),
             )
             Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(item.summary, style = MaterialTheme.typography.bodyMedium)
-            Text("${item.role} • ${item.timeline}", style = MaterialTheme.typography.bodySmall)
-            Text("Updated ${item.updatedAt}", style = MaterialTheme.typography.labelSmall)
+            Text(item.role, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+            Text(item.timeline, style = MaterialTheme.typography.bodySmall)
+            Text("Updated ${item.updatedAt}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item.tags.forEach { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
             }
@@ -334,8 +357,13 @@ private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Text(item.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(item.summary, style = MaterialTheme.typography.bodyLarge)
-            Text("${item.role} • ${item.timeline}", style = MaterialTheme.typography.bodyMedium)
-            Text("Published ${item.publishedAt} • Updated ${item.updatedAt}", style = MaterialTheme.typography.labelMedium)
+            Text(item.role, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+            Text(item.timeline, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                "Published ${item.publishedAt} • Updated ${item.updatedAt}",
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
         item {
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -366,6 +394,7 @@ private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit) {
                 }
                 Spacer(Modifier.height(8.dp))
             }
+            HorizontalDivider()
             Text("Full Case Study", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             MarkdownView(html = html)
         }
@@ -419,11 +448,19 @@ private fun AboutScreen(state: MainUiState, onRetry: () -> Unit) {
                 Text("Social", style = MaterialTheme.typography.titleMedium)
                 Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
                     about?.social?.forEach { social ->
-                        Text(
-                            social.label,
-                            color = MaterialTheme.colorScheme.primary,
+                        Row(
                             modifier = Modifier.clickable { openUrl(context, social.url) },
-                        )
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        ) {
+                            Text(social.label, color = MaterialTheme.colorScheme.primary)
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(16.dp),
+                            )
+                        }
                     }
                 }
             }
@@ -467,11 +504,19 @@ private fun ContactScreen(state: MainUiState, onRetry: () -> Unit) {
         }
 
         contact?.links?.forEach { link ->
-            Text(
-                link.label,
-                color = MaterialTheme.colorScheme.primary,
+            Row(
                 modifier = Modifier.clickable { openUrl(context, link.url) },
-            )
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(link.label, color = MaterialTheme.colorScheme.primary)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
+            }
         }
     }
 }
