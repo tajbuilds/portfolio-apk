@@ -204,6 +204,7 @@ private fun HomeScreen(
     onOpenWork: () -> Unit,
     onOpenWorkItem: (String) -> Unit,
 ) {
+    val context = LocalContext.current
     if (state.loading && state.profile == null) return FullScreenLoading("Loading portfolio...")
     if (state.error != null && state.profile == null) return FullScreenError(state.error, onRetry)
 
@@ -215,13 +216,40 @@ private fun HomeScreen(
                         .background(MaterialTheme.colorScheme.surfaceVariant)
                         .padding(16.dp),
                 ) {
+                    AsyncImage(
+                        model = state.profile?.avatarUrl?.let(::absoluteUrl),
+                        contentDescription = state.profile?.name,
+                        modifier = Modifier
+                            .size(72.dp)
+                            .padding(bottom = 10.dp),
+                    )
                     Text(
                         state.profile?.name.orEmpty(),
                         style = MaterialTheme.typography.headlineMedium,
                         fontWeight = FontWeight.Bold,
                     )
                     Text(state.profile?.role.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                    Text(state.profile?.location.orEmpty(), style = MaterialTheme.typography.bodyMedium)
                     Text(state.profile?.tagline.orEmpty(), modifier = Modifier.padding(top = 8.dp))
+                    Row(
+                        modifier = Modifier.padding(top = 12.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        state.cta?.let { cta ->
+                            Button(onClick = {
+                                if (cta.primary.path.startsWith("/work")) {
+                                    onOpenWork()
+                                } else {
+                                    openUrl(context, absoluteUrl(cta.primary.path))
+                                }
+                            }) {
+                                Text(cta.primary.label)
+                            }
+                            Button(onClick = { openUrl(context, absoluteUrl(cta.secondary.path)) }) {
+                                Text(cta.secondary.label)
+                            }
+                        }
+                    }
                 }
             }
         }
@@ -275,6 +303,8 @@ private fun WorkCard(item: WorkSummary, onClick: () -> Unit) {
             )
             Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(item.summary, style = MaterialTheme.typography.bodyMedium)
+            Text("${item.role} • ${item.timeline}", style = MaterialTheme.typography.bodySmall)
+            Text("Updated ${item.updatedAt}", style = MaterialTheme.typography.labelSmall)
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item.tags.forEach { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
             }
@@ -291,6 +321,7 @@ private fun WorkDetailScreen(slug: String, state: WorkDetailUiState, onRetry: ()
 
 @Composable
 private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit) {
+    val context = LocalContext.current
     val html = remember(item.content.body) { markdownToHtml(item.content.body) }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
@@ -303,6 +334,8 @@ private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit) {
             Spacer(Modifier.height(8.dp))
             Text(item.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(item.summary, style = MaterialTheme.typography.bodyLarge)
+            Text("${item.role} • ${item.timeline}", style = MaterialTheme.typography.bodyMedium)
+            Text("Published ${item.publishedAt} • Updated ${item.updatedAt}", style = MaterialTheme.typography.labelMedium)
         }
         item {
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -318,6 +351,21 @@ private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit) {
             if (sections?.learnings?.isNotBlank() == true) SectionCard("Learnings", sections.learnings)
         }
         item {
+            item.links?.let { links ->
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    links.liveDemo?.takeIf { it.isNotBlank() }?.let { liveDemo ->
+                        Button(onClick = { openUrl(context, liveDemo) }) {
+                            Text("Live Demo")
+                        }
+                    }
+                    links.repository?.takeIf { it.isNotBlank() }?.let { repository ->
+                        Button(onClick = { openUrl(context, repository) }) {
+                            Text("Repository")
+                        }
+                    }
+                }
+                Spacer(Modifier.height(8.dp))
+            }
             Text("Full Case Study", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
             MarkdownView(html = html)
         }
@@ -336,12 +384,20 @@ private fun SectionCard(title: String, content: String) {
 
 @Composable
 private fun AboutScreen(state: MainUiState, onRetry: () -> Unit) {
+    val context = LocalContext.current
     if (state.loading && state.about == null) return FullScreenLoading("Loading about...")
     if (state.error != null && state.about == null) return FullScreenError(state.error, onRetry)
 
     val about = state.about
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         item {
+            AsyncImage(
+                model = about?.avatarUrl?.let(::absoluteUrl),
+                contentDescription = about?.name,
+                modifier = Modifier
+                    .size(88.dp)
+                    .padding(bottom = 10.dp),
+            )
             Text(about?.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text(about?.headline.orEmpty(), style = MaterialTheme.typography.titleMedium)
             Text(about?.bio.orEmpty(), modifier = Modifier.padding(top = 8.dp))
@@ -357,6 +413,20 @@ private fun AboutScreen(state: MainUiState, onRetry: () -> Unit) {
         item {
             Text("Focus Areas", style = MaterialTheme.typography.titleMedium)
             Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { about?.focusAreas?.forEach { area -> Text("- $area") } }
+        }
+        item {
+            if (!about?.social.isNullOrEmpty()) {
+                Text("Social", style = MaterialTheme.typography.titleMedium)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                    about?.social?.forEach { social ->
+                        Text(
+                            social.label,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.clickable { openUrl(context, social.url) },
+                        )
+                    }
+                }
+            }
         }
     }
 }
@@ -386,14 +456,21 @@ private fun ContactScreen(state: MainUiState, onRetry: () -> Unit) {
             Text("Email Me")
         }
 
+        contact?.formPath?.takeIf { it.isNotBlank() }?.let { formPath ->
+            Button(onClick = { openUrl(context, absoluteUrl(formPath)) }) {
+                Text("Open Contact Form")
+            }
+        }
+
+        if (contact?.turnstileRequired == true) {
+            Text("Form submission is protected by Turnstile.", style = MaterialTheme.typography.bodySmall)
+        }
+
         contact?.links?.forEach { link ->
             Text(
                 link.label,
                 color = MaterialTheme.colorScheme.primary,
-                modifier = Modifier.clickable {
-                    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(link.url))
-                    runCatching { context.startActivity(intent) }
-                },
+                modifier = Modifier.clickable { openUrl(context, link.url) },
             )
         }
     }
@@ -476,6 +553,11 @@ private fun absoluteUrl(pathOrUrl: String): String {
     } else {
         BuildConfig.API_BASE_URL.removeSuffix("/") + "/" + pathOrUrl.removePrefix("/")
     }
+}
+
+private fun openUrl(context: android.content.Context, url: String) {
+    val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url))
+    runCatching { context.startActivity(intent) }
 }
 
 @Composable

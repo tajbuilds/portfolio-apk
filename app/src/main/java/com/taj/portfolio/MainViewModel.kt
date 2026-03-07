@@ -3,6 +3,7 @@ package com.taj.portfolio
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.taj.portfolio.data.About
+import com.taj.portfolio.data.Cta
 import com.taj.portfolio.data.Contact
 import com.taj.portfolio.data.PortfolioRepository
 import com.taj.portfolio.data.Profile
@@ -17,6 +18,7 @@ data class MainUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val profile: Profile? = null,
+    val cta: Cta? = null,
     val featuredWork: List<WorkSummary> = emptyList(),
     val work: List<WorkSummary> = emptyList(),
     val about: About? = null,
@@ -46,6 +48,7 @@ class MainViewModel(private val repository: PortfolioRepository) : ViewModel() {
             _state.value = MainUiState(
                 loading = true,
                 profile = home?.profile,
+                cta = home?.cta,
                 featuredWork = home?.featuredWork ?: emptyList(),
                 work = work?.items ?: emptyList(),
                 about = about?.about,
@@ -63,6 +66,7 @@ class MainViewModel(private val repository: PortfolioRepository) : ViewModel() {
                 loading = false,
                 error = if (!hasAnyData) "Unable to load portfolio data" else null,
                 profile = (refreshedHome ?: home)?.profile,
+                cta = (refreshedHome ?: home)?.cta,
                 featuredWork = (refreshedHome ?: home)?.featuredWork ?: emptyList(),
                 work = (refreshedWork ?: work)?.items ?: emptyList(),
                 about = (refreshedAbout ?: about)?.about,
