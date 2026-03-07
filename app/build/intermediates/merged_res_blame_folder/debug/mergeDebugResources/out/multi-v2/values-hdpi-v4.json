@@ -1,0 +1,20 @@
+{
+    "logs": [
+        {
+            "outputFile": "com.tajbuilds.portfolio.app-mergeDebugResources-71:/values-hdpi-v4/values-hdpi-v4.xml",
+            "map": [
+                {
+                    "source": "/home/taj/.gradle/caches/8.10.2/transforms/11aaad14febdc63f9b943001189be73b/transformed/appcompat-1.6.1/res/values-hdpi-v4/values-hdpi-v4.xml",
+                    "from": {
+                        "startLines": "2",
+                        "startColumns": "4",
+                        "startOffsets": "55",
+                        "endLines": "6",
+                        "endColumns": "13",
+                        "endOffsets": "327"
+                    }
+                }
+            ]
+        }
+    ]
+}

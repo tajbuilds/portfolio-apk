@@ -1,0 +1,15 @@
+package com.taj.portfolio.data.cache
+
+import androidx.room.Dao
+import androidx.room.Insert
+import androidx.room.OnConflictStrategy
+import androidx.room.Query
+
+@Dao
+interface CacheDao {
+    @Query("SELECT * FROM cache_blob WHERE `key` = :key LIMIT 1")
+    suspend fun get(key: String): CacheBlobEntity?
+
+    @Insert(onConflict = OnConflictStrategy.REPLACE)
+    suspend fun put(blob: CacheBlobEntity)
+}

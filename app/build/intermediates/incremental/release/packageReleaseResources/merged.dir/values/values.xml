@@ -1,0 +1,11 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="ic_launcher_background">#0D47A1</color>
+    <color name="splash_background">#0D47A1</color>
+    <style name="Theme.TajPortfolio" parent="Theme.Material3.DayNight.NoActionBar"/>
+    <style name="Theme.TajPortfolio.Splash" parent="Theme.SplashScreen">
+        <item name="windowSplashScreenBackground">@color/splash_background</item>
+        <item name="windowSplashScreenAnimatedIcon">@mipmap/ic_launcher</item>
+        <item name="postSplashScreenTheme">@style/Theme.TajPortfolio</item>
+    </style>
+</resources>
