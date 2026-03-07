@@ -13,6 +13,7 @@ import kotlinx.coroutines.launch
 data class WorkDetailUiState(
     val loading: Boolean = true,
     val error: String? = null,
+    val syncMessage: String? = null,
     val item: WorkDetail? = null,
 )
 
@@ -29,7 +30,8 @@ class WorkDetailViewModel(
 
     fun refresh() {
         viewModelScope.launch {
-            val cached = repository.getCachedDetail(slug)?.item
+            val cachedResult = repository.getCachedDetail(slug)
+            val cached = cachedResult.value?.item
             if (cached != null) {
                 _state.value = WorkDetailUiState(loading = true, item = cached)
             } else {
@@ -39,7 +41,15 @@ class WorkDetailViewModel(
             val refreshed = runCatching { repository.refreshDetail(slug).item }.getOrNull()
             _state.value = when {
                 refreshed != null -> WorkDetailUiState(loading = false, item = refreshed)
-                cached != null -> WorkDetailUiState(loading = false, item = cached)
+                cached != null -> WorkDetailUiState(
+                    loading = false,
+                    item = cached,
+                    syncMessage = if (cachedResult.isStale) {
+                        "Couldn't refresh this case study. Showing stale cached content."
+                    } else {
+                        "Couldn't refresh this case study. Showing cached content."
+                    },
+                )
                 else -> WorkDetailUiState(loading = false, error = "Failed to load work item")
             }
         }

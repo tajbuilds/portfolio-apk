@@ -47,3 +47,28 @@ Output paths:
 - `app/build/outputs/bundle/release/`
 
 If release signing values are not configured, release build falls back to debug signing so CI/local verification can still run.
+
+## Cache and Offline Behavior
+
+- Home/work cache is treated as stale after 15 minutes.
+- Work detail cache is treated as stale after 1 hour.
+- About/contact cache is treated as stale after 12 hours.
+- Stale cached data is still shown as fallback, with a visible in-app sync banner.
+
+## CI
+
+Workflow file: `.github/workflows/android.yml`
+
+- Pull requests and pushes to `master` run:
+  - `:app:testDebugUnitTest`
+  - `:app:assembleDebug`
+- Release artifacts (`assembleRelease` + `bundleRelease`) run on:
+  - tag push matching `v*`
+  - manual `workflow_dispatch`
+
+Optional release signing secrets for CI:
+
+- `ANDROID_KEYSTORE_B64` (base64-encoded keystore file)
+- `ANDROID_STORE_PASSWORD`
+- `ANDROID_KEY_ALIAS`
+- `ANDROID_KEY_PASSWORD`

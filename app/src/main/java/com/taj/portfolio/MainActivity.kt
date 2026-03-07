@@ -33,6 +33,7 @@ import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
 import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.AssistChip
@@ -216,6 +217,9 @@ private fun HomeScreen(
     if (state.error != null && state.profile == null) return FullScreenError(state.error, onRetry)
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        if (!state.syncMessage.isNullOrBlank()) {
+            item { SyncBanner(message = state.syncMessage) }
+        }
         item {
             Card(modifier = Modifier.fillMaxWidth()) {
                 Column(
@@ -297,6 +301,9 @@ private fun WorkScreen(
     if (state.error != null && state.work.isEmpty()) return FullScreenError(state.error, onRetry)
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (!state.syncMessage.isNullOrBlank()) {
+            item { SyncBanner(message = state.syncMessage) }
+        }
         item {
             Text("Work", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
             Text("Case studies and architecture outcomes", style = MaterialTheme.typography.bodyMedium)
@@ -339,15 +346,18 @@ private fun WorkCard(item: WorkSummary, onClick: () -> Unit) {
 private fun WorkDetailScreen(slug: String, state: WorkDetailUiState, onRetry: () -> Unit, onBack: () -> Unit) {
     if (state.loading && state.item == null) return FullScreenLoading("Loading $slug...")
     if (state.error != null && state.item == null) return FullScreenError(state.error, onRetry)
-    state.item?.let { WorkDetailContent(item = it, onBack = onBack) }
+    state.item?.let { WorkDetailContent(item = it, onBack = onBack, syncMessage = state.syncMessage) }
 }
 
 @Composable
-private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit) {
+private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit, syncMessage: String?) {
     val context = LocalContext.current
     val html = remember(item.content.body) { markdownToHtml(item.content.body) }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (!syncMessage.isNullOrBlank()) {
+            item { SyncBanner(message = syncMessage) }
+        }
         item {
             Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
@@ -419,6 +429,9 @@ private fun AboutScreen(state: MainUiState, onRetry: () -> Unit) {
 
     val about = state.about
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        if (!state.syncMessage.isNullOrBlank()) {
+            item { SyncBanner(message = state.syncMessage) }
+        }
         item {
             AsyncImage(
                 model = about?.avatarUrl?.let(::absoluteUrl),
@@ -481,6 +494,9 @@ private fun ContactScreen(state: MainUiState, onRetry: () -> Unit) {
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
+        if (!state.syncMessage.isNullOrBlank()) {
+            SyncBanner(message = state.syncMessage)
+        }
         Text("Contact", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
         Text(contact?.email.orEmpty(), style = MaterialTheme.typography.bodyLarge)
 
@@ -517,6 +533,29 @@ private fun ContactScreen(state: MainUiState, onRetry: () -> Unit) {
                     modifier = Modifier.size(16.dp),
                 )
             }
+        }
+    }
+}
+
+@Composable
+private fun SyncBanner(message: String?) {
+    if (message.isNullOrBlank()) return
+    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Icon(
+                imageVector = Icons.Default.Info,
+                contentDescription = null,
+                tint = MaterialTheme.colorScheme.primary,
+            )
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurface,
+            )
         }
     }
 }
@@ -593,11 +632,7 @@ private fun wrapHtml(body: String): String {
 }
 
 private fun absoluteUrl(pathOrUrl: String): String {
-    return if (pathOrUrl.startsWith("http://") || pathOrUrl.startsWith("https://")) {
-        pathOrUrl
-    } else {
-        BuildConfig.API_BASE_URL.removeSuffix("/") + "/" + pathOrUrl.removePrefix("/")
-    }
+    return resolveUrl(BuildConfig.API_BASE_URL, pathOrUrl)
 }
 
 private fun openUrl(context: android.content.Context, url: String) {

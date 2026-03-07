@@ -9,12 +9,20 @@ class PortfolioRepository(
     private val cacheDao: CacheDao,
     private val gson: Gson,
 ) {
-    suspend fun getCachedHome(): HomeResponse? = get(KEY_HOME, HomeResponse::class.java)
-    suspend fun getCachedWork(): WorkListResponse? = get(KEY_WORK, WorkListResponse::class.java)
-    suspend fun getCachedAbout(): AboutResponse? = get(KEY_ABOUT, AboutResponse::class.java)
-    suspend fun getCachedContact(): ContactResponse? = get(KEY_CONTACT, ContactResponse::class.java)
-    suspend fun getCachedDetail(slug: String): WorkDetailResponse? =
-        get(detailKey(slug), WorkDetailResponse::class.java)
+    suspend fun getCachedHome(): CachedResult<HomeResponse> =
+        get(KEY_HOME, HomeResponse::class.java, HOME_MAX_AGE_MS)
+
+    suspend fun getCachedWork(): CachedResult<WorkListResponse> =
+        get(KEY_WORK, WorkListResponse::class.java, WORK_MAX_AGE_MS)
+
+    suspend fun getCachedAbout(): CachedResult<AboutResponse> =
+        get(KEY_ABOUT, AboutResponse::class.java, ABOUT_MAX_AGE_MS)
+
+    suspend fun getCachedContact(): CachedResult<ContactResponse> =
+        get(KEY_CONTACT, ContactResponse::class.java, CONTACT_MAX_AGE_MS)
+
+    suspend fun getCachedDetail(slug: String): CachedResult<WorkDetailResponse> =
+        get(detailKey(slug), WorkDetailResponse::class.java, DETAIL_MAX_AGE_MS)
 
     suspend fun refreshHome(): HomeResponse = api.getHome().also { put(KEY_HOME, it) }
     suspend fun refreshWork(): WorkListResponse = api.getWork().also { put(KEY_WORK, it) }
@@ -24,18 +32,29 @@ class PortfolioRepository(
         api.getWorkDetail(slug).also { put(detailKey(slug), it) }
 
     private suspend fun put(key: String, payload: Any) {
+        val now = System.currentTimeMillis()
+        cacheDao.deleteOlderThan(now - HARD_RETENTION_MS)
         cacheDao.put(
             CacheBlobEntity(
                 key = key,
                 payload = gson.toJson(payload),
-                updatedAt = System.currentTimeMillis(),
+                updatedAt = now,
             ),
         )
     }
 
-    private suspend fun <T> get(key: String, clazz: Class<T>): T? {
-        val payload = cacheDao.get(key)?.payload ?: return null
-        return runCatching { gson.fromJson(payload, clazz) }.getOrNull()
+    private suspend fun <T> get(key: String, clazz: Class<T>, maxAgeMs: Long): CachedResult<T> {
+        val cached = cacheDao.get(key) ?: return CachedResult(value = null, isStale = true)
+        val parsed = runCatching { gson.fromJson(cached.payload, clazz) }.getOrNull()
+        if (parsed == null) {
+            cacheDao.delete(key)
+            return CachedResult(value = null, isStale = true)
+        }
+        return CachedResult(
+            value = parsed,
+            isStale = isCacheStale(cached.updatedAt, System.currentTimeMillis(), maxAgeMs),
+            updatedAt = cached.updatedAt,
+        )
     }
 
     private fun detailKey(slug: String): String = "$KEY_DETAIL_PREFIX$slug"
@@ -46,5 +65,17 @@ class PortfolioRepository(
         const val KEY_ABOUT = "about"
         const val KEY_CONTACT = "contact"
         const val KEY_DETAIL_PREFIX = "work_detail_"
+        const val HOME_MAX_AGE_MS = 15 * 60 * 1000L
+        const val WORK_MAX_AGE_MS = 15 * 60 * 1000L
+        const val ABOUT_MAX_AGE_MS = 12 * 60 * 60 * 1000L
+        const val CONTACT_MAX_AGE_MS = 12 * 60 * 60 * 1000L
+        const val DETAIL_MAX_AGE_MS = 60 * 60 * 1000L
+        const val HARD_RETENTION_MS = 30L * 24 * 60 * 60 * 1000L
     }
 }
+
+data class CachedResult<T>(
+    val value: T?,
+    val isStale: Boolean,
+    val updatedAt: Long? = null,
+)
