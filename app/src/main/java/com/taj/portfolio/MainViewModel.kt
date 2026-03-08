@@ -71,10 +71,14 @@ class MainViewModel(private val repository: PortfolioRepository) : ViewModel() {
                 contact = contact?.contact?.toUi(),
             )
 
-            val refreshedHome = runCatching { repository.refreshHome() }.getOrNull()
-            val refreshedWork = runCatching { repository.refreshWork() }.getOrNull()
-            val refreshedAbout = runCatching { repository.refreshAbout() }.getOrNull()
-            val refreshedContact = runCatching { repository.refreshContact() }.getOrNull()
+            val refreshedHomeDeferred = async { runCatching { repository.refreshHome() }.getOrNull() }
+            val refreshedWorkDeferred = async { runCatching { repository.refreshWork() }.getOrNull() }
+            val refreshedAboutDeferred = async { runCatching { repository.refreshAbout() }.getOrNull() }
+            val refreshedContactDeferred = async { runCatching { repository.refreshContact() }.getOrNull() }
+            val refreshedHome = refreshedHomeDeferred.await()
+            val refreshedWork = refreshedWorkDeferred.await()
+            val refreshedAbout = refreshedAboutDeferred.await()
+            val refreshedContact = refreshedContactDeferred.await()
 
             val hasAnyData = (refreshedHome ?: home) != null || (refreshedWork ?: work) != null
             val latestGeneratedAt = listOfNotNull(

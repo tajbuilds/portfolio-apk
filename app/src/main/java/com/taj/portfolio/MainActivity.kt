@@ -25,6 +25,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -62,10 +63,13 @@ import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -75,6 +79,8 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -90,6 +96,8 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.room.Room
 import coil.compose.AsyncImage
+import coil.ImageLoader
+import coil.decode.SvgDecoder
 import com.google.gson.Gson
 import com.tajbuilds.portfolio.BuildConfig
 import com.taj.portfolio.data.PortfolioApi
@@ -102,6 +110,7 @@ import com.taj.portfolio.ui.theme.ThemeMode
 import com.taj.portfolio.ui.theme.ThemePreferences
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
+import kotlinx.coroutines.launch
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -166,7 +175,7 @@ private fun App(
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
-        bottomBar = { if (showBottomBar(navController)) BottomNavBar(navController) },
+        bottomBar = { if (showBottomBar()) BottomNavBar(navController) },
     ) { padding ->
         NavHost(
             navController = navController,
@@ -177,7 +186,7 @@ private fun App(
                 HomeScreen(
                     state = state,
                     onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::clearCacheAndRefresh,
+                    onPullToRefresh = mainVm::refresh,
                     onOpenWork = { navController.navigate("work") },
                     onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
                 )
@@ -186,7 +195,7 @@ private fun App(
                 WorkScreen(
                     state = state,
                     onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::clearCacheAndRefresh,
+                    onPullToRefresh = mainVm::refresh,
                     onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
                 )
             }
@@ -212,14 +221,15 @@ private fun App(
                 AboutScreen(
                     state = state,
                     onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::clearCacheAndRefresh,
+                    onPullToRefresh = mainVm::refresh,
                 )
             }
             composable("contact") {
                 ContactScreen(
                     state = state,
+                    repository = repository,
                     onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::clearCacheAndRefresh,
+                    onPullToRefresh = mainVm::refresh,
                     onOpenContactForm = { url ->
                         navController.navigate("contact/form/${Uri.encode(url)}")
                     },
@@ -257,10 +267,13 @@ private fun BottomNavBar(navController: NavHostController) {
             NavigationBarItem(
                 selected = selected,
                 onClick = {
-                    navController.navigate(destination.route) {
-                        popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
+                    val didPop = navController.popBackStack(destination.route, inclusive = false)
+                    if (!didPop) {
+                        navController.navigate(destination.route) {
+                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
                     }
                 },
                 icon = { Icon(imageVector = destination.icon, contentDescription = destination.label) },
@@ -278,7 +291,6 @@ private fun HomeScreen(
     onOpenWork: () -> Unit,
     onOpenWorkItem: (String) -> Unit,
 ) {
-    val context = LocalContext.current
     if (state.loading && state.profile == null) return FullScreenLoading("Loading portfolio...")
     if (state.error != null && state.profile == null) return FullScreenError(state.error, onRetry)
 
@@ -339,26 +351,6 @@ private fun HomeScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
                     )
-                    Row(
-                        modifier = Modifier.padding(top = 12.dp),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        state.cta?.let { cta ->
-                            Button(onClick = {
-                                if (cta.primary.path.startsWith("/work")) {
-                                    onOpenWork()
-                                } else {
-                                    openUrl(context, absoluteUrl(cta.primary.path))
-                                }
-                            }) {
-                                Text(cta.primary.label)
-                            }
-                            OutlinedButton(onClick = { openUrl(context, absoluteUrl(cta.secondary.path)) }) {
-                                Text(cta.secondary.label)
-                            }
-                        }
-                        OutlinedButton(onClick = onOpenWork) { Text("Explore Work") }
-                    }
                 }
             }
         }
@@ -403,6 +395,7 @@ private fun WorkScreen(
 
 @Composable
 private fun WorkCard(item: WorkSummaryUi, onClick: () -> Unit) {
+    val imageLoader = rememberSvgImageLoader()
     val hasGenericAvatarCover =
         item.coverImageUrl.contains("tajinder-singh-portrait", ignoreCase = true)
     val coverModel = item.coverImageUrl.takeIf { it.isNotBlank() && !hasGenericAvatarCover }?.let(::absoluteUrl)
@@ -416,6 +409,7 @@ private fun WorkCard(item: WorkSummaryUi, onClick: () -> Unit) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (coverModel != null) {
                 AsyncImage(
+                    imageLoader = imageLoader,
                     model = coverModel,
                     contentDescription = item.title,
                     contentScale = ContentScale.Crop,
@@ -486,6 +480,9 @@ private fun WorkDetailScreen(slug: String, state: WorkDetailUiState, onRetry: ()
 @Composable
 private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessage: String?) {
     val context = LocalContext.current
+    val imageLoader = rememberSvgImageLoader()
+    val hasGenericAvatarCover = item.coverImageUrl.contains("tajinder-singh-portrait", ignoreCase = true)
+    val coverModel = item.coverImageUrl.takeIf { it.isNotBlank() && !hasGenericAvatarCover }?.let(::absoluteUrl)
     val sections = listOf(
         "Context" to item.sections?.context,
         "Constraints" to item.sections?.constraints,
@@ -505,6 +502,19 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
                 Text("Back", color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(8.dp))
+            if (coverModel != null) {
+                AsyncImage(
+                    imageLoader = imageLoader,
+                    model = coverModel,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(180.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                )
+                Spacer(Modifier.height(8.dp))
+            }
             Text(item.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
             Text(item.summary, style = MaterialTheme.typography.bodyLarge)
             Text(item.role, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
@@ -567,7 +577,7 @@ private fun SectionCard(title: String, content: String) {
     ElevatedCard(modifier = Modifier.fillMaxWidth()) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(content, style = MaterialTheme.typography.bodyMedium)
+            Text(cleanDetailText(content), style = MaterialTheme.typography.bodyMedium)
         }
     }
 }
@@ -642,15 +652,27 @@ private fun AboutScreen(
 @Composable
 private fun ContactScreen(
     state: MainUiState,
+    repository: PortfolioRepository,
     onRetry: () -> Unit,
     onPullToRefresh: () -> Unit,
     onOpenContactForm: (String) -> Unit,
 ) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     if (state.loading && state.contact == null) return FullScreenLoading("Loading contact...")
     if (state.error != null && state.contact == null) return FullScreenError(state.error, onRetry)
 
     val contact = state.contact
+    var name by rememberSaveable { mutableStateOf("") }
+    var email by rememberSaveable { mutableStateOf("") }
+    var message by rememberSaveable { mutableStateOf("") }
+    var submitStatus by rememberSaveable { mutableStateOf<String?>(null) }
+    var submitError by rememberSaveable { mutableStateOf(false) }
+    var submitting by rememberSaveable { mutableStateOf(false) }
+
+    val emailRegex = remember { Regex("^[^\\s@]+@[^\\s@]+\\.[^\\s@]+$") }
+    val wordCount = remember(message) { message.trim().split(Regex("\\s+")).filter { it.isNotBlank() }.size }
+
     PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
         LazyColumn(
             modifier = Modifier
@@ -683,10 +705,104 @@ private fun ContactScreen(
                             Spacer(Modifier.width(8.dp))
                             Text("Email Me")
                         }
-                        contact?.formPath?.takeIf { it.isNotBlank() }?.let { formPath ->
-                            OutlinedButton(onClick = { onOpenContactForm(absoluteContactFormUrl(formPath)) }) {
-                                Text("Open Contact Form In App")
-                            }
+                    }
+                }
+            }
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text("Send Message", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                        OutlinedTextField(
+                            value = name,
+                            onValueChange = { if (it.length <= 120) name = it },
+                            label = { Text("Name") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = email,
+                            onValueChange = { if (it.length <= 190) email = it },
+                            label = { Text("Email") },
+                            singleLine = true,
+                            keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Email),
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        OutlinedTextField(
+                            value = message,
+                            onValueChange = { if (it.length <= 2500) message = it },
+                            label = { Text("Message") },
+                            minLines = 5,
+                            modifier = Modifier.fillMaxWidth(),
+                        )
+                        Text(
+                            "Minimum 30 characters and 29 words. Current words: $wordCount",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
+                        Button(
+                            onClick = {
+                                val cleanName = name.trim()
+                                val cleanEmail = email.trim()
+                                val cleanMessage = message.trim()
+                                when {
+                                    cleanName.length < 2 -> {
+                                        submitError = true
+                                        submitStatus = "Please enter your full name (at least 2 characters)."
+                                    }
+                                    !emailRegex.matches(cleanEmail) -> {
+                                        submitError = true
+                                        submitStatus = "Please enter a valid email address."
+                                    }
+                                    cleanMessage.length < 30 -> {
+                                        submitError = true
+                                        submitStatus = "Please enter a message with at least 30 characters."
+                                    }
+                                    wordCount < 29 -> {
+                                        submitError = true
+                                        submitStatus = "Please provide more detail (minimum 29 words)."
+                                    }
+                                    else -> {
+                                        submitting = true
+                                        submitError = false
+                                        submitStatus = "Sending..."
+                                        scope.launch {
+                                            val result = runCatching {
+                                                repository.submitContact(
+                                                    com.taj.portfolio.data.ContactSubmitRequest(
+                                                        name = cleanName,
+                                                        email = cleanEmail,
+                                                        message = cleanMessage,
+                                                    ),
+                                                )
+                                            }.getOrNull()
+                                            submitting = false
+                                            if (result?.ok == true) {
+                                                submitError = false
+                                                submitStatus = result.message
+                                                name = ""
+                                                email = ""
+                                                message = ""
+                                            } else {
+                                                submitError = true
+                                                submitStatus = result?.message ?: "Unable to send message right now."
+                                            }
+                                        }
+                                    }
+                                }
+                            },
+                            enabled = !submitting,
+                        ) {
+                            Text(if (submitting) "Sending..." else "Send Message")
+                        }
+                        submitStatus?.let { status ->
+                            Text(
+                                status,
+                                style = MaterialTheme.typography.bodySmall,
+                                color = if (submitError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                            )
+                        }
+                        OutlinedButton(onClick = { onOpenContactForm(absoluteUrl("/contact/")) }) {
+                            Text("Open Web Form Instead")
                         }
                     }
                 }
@@ -798,6 +914,7 @@ private fun PullRefreshContainer(
     content: @Composable () -> Unit,
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
+    val pullOffset = (pullToRefreshState.distanceFraction * 96f).coerceAtLeast(0f).dp
     PullToRefreshBox(
         isRefreshing = refreshing,
         onRefresh = onRefresh,
@@ -811,9 +928,28 @@ private fun PullRefreshContainer(
             )
         },
     ) {
-        content()
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .offset(y = pullOffset),
+        ) {
+            content()
+        }
     }
 }
+
+@Composable
+private fun rememberSvgImageLoader(): ImageLoader {
+    val context = LocalContext.current.applicationContext
+    return remember(context) {
+        sharedSvgImageLoader ?: ImageLoader.Builder(context)
+            .components { add(SvgDecoder.Factory()) }
+            .build()
+            .also { sharedSvgImageLoader = it }
+    }
+}
+
+private var sharedSvgImageLoader: ImageLoader? = null
 
 @Composable
 private fun ContactFormScreen(url: String, onBack: () -> Unit) {
@@ -928,11 +1064,20 @@ private fun ThemeMode.label(): String = when (this) {
     ThemeMode.DARK -> "Dark"
 }
 
+private fun cleanDetailText(value: String): String {
+    return value
+        .replace("**", "")
+        .replace("__", "")
+        .replace("`", "")
+        .replace(Regex("(?m)^#{1,6}\\s*"), "")
+        .replace(Regex("(?m)^[-*]\\s+"), "")
+        .replace(Regex("\\n{3,}"), "\n\n")
+        .trim()
+}
+
 @Composable
-private fun showBottomBar(navController: NavHostController): Boolean {
-    val backStackEntry by navController.currentBackStackEntryAsState()
-    val route = backStackEntry?.destination?.route
-    return route in setOf("home", "work", "about", "contact", "settings")
+private fun showBottomBar(): Boolean {
+    return true
 }
 
 

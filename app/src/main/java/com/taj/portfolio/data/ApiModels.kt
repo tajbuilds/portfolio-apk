@@ -121,3 +121,15 @@ data class LinkItem(
     val label: String,
     val url: String,
 )
+
+data class ContactSubmitRequest(
+    val name: String,
+    val email: String,
+    val message: String,
+    val company: String = "",
+)
+
+data class ContactSubmitResponse(
+    val ok: Boolean,
+    val message: String,
+)

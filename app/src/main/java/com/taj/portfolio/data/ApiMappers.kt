@@ -36,6 +36,11 @@ fun ContactResponseDto.toDomain(): ContactResponse = ContactResponse(
     contact = (contact ?: ContactDto()).toDomain(),
 )
 
+fun ContactSubmitResponseDto.toDomain(): ContactSubmitResponse = ContactSubmitResponse(
+    ok = ok ?: false,
+    message = message.orEmptyTrimmed().ifBlank { "Unable to send message." },
+)
+
 private fun ProfileDto.toDomain(): Profile = Profile(
     name = name.orEmptyTrimmed(),
     role = role.orEmptyTrimmed(),

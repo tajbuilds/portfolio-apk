@@ -116,3 +116,15 @@ data class LinkItemDto(
     val label: String? = null,
     val url: String? = null,
 )
+
+data class ContactSubmitRequestDto(
+    val name: String,
+    val email: String,
+    val message: String,
+    val company: String = "",
+)
+
+data class ContactSubmitResponseDto(
+    val ok: Boolean? = null,
+    val message: String? = null,
+)

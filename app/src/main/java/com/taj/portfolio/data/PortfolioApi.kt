@@ -1,7 +1,9 @@
 package com.taj.portfolio.data
 
 import retrofit2.http.GET
+import retrofit2.http.POST
 import retrofit2.http.Path
+import retrofit2.http.Body
 
 interface PortfolioApi {
     @GET("api/mobile/home")
@@ -18,4 +20,7 @@ interface PortfolioApi {
 
     @GET("api/mobile/contact")
     suspend fun getContact(): ContactResponseDto
+
+    @POST("api/mobile/contact/submit")
+    suspend fun submitContact(@Body payload: ContactSubmitRequestDto): ContactSubmitResponseDto
 }

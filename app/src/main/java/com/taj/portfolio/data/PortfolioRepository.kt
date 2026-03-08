@@ -40,6 +40,16 @@ class PortfolioRepository(
     suspend fun refreshDetail(slug: String): WorkDetailResponse =
         api.getWorkDetail(slug).toDomain().also { validateVersion(it); put(detailKey(slug), it) }
 
+    suspend fun submitContact(request: ContactSubmitRequest): ContactSubmitResponse =
+        api.submitContact(
+            ContactSubmitRequestDto(
+                name = request.name.trim(),
+                email = request.email.trim(),
+                message = request.message.trim(),
+                company = request.company.trim(),
+            ),
+        ).toDomain()
+
     suspend fun clearCache() = cacheDao.clearAll()
 
     private suspend fun put(key: String, payload: Any) {
