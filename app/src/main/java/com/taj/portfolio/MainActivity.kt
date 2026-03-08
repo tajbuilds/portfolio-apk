@@ -11,10 +11,15 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.compose.foundation.background
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -28,9 +33,29 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.AnimatedVisibilityScope
+import androidx.compose.animation.ExperimentalSharedTransitionApi
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.SharedTransitionLayout
+import androidx.compose.animation.SharedTransitionScope
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.RepeatMode
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -43,6 +68,11 @@ import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mail
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Work
+import androidx.compose.material.icons.outlined.AccountCircle
+import androidx.compose.material.icons.outlined.Home
+import androidx.compose.material.icons.outlined.Mail
+import androidx.compose.material.icons.outlined.Settings
+import androidx.compose.material.icons.outlined.Work
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -54,20 +84,22 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.pulltorefresh.PullToRefreshBox
 import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
 import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.compositionLocalOf
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -75,6 +107,8 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -83,6 +117,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.platform.testTag
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavDestination.Companion.hierarchy
@@ -96,7 +131,10 @@ import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
 import androidx.room.Room
 import coil.compose.AsyncImage
+import coil.compose.AsyncImagePainter
+import coil.compose.SubcomposeAsyncImage
 import coil.ImageLoader
+import coil.request.ImageRequest
 import coil.decode.SvgDecoder
 import com.google.gson.Gson
 import com.tajbuilds.portfolio.BuildConfig
@@ -134,16 +172,22 @@ class MainActivity : ComponentActivity() {
         setContent {
             var themeMode by remember { mutableStateOf(themePreferences.getThemeMode()) }
             PortfolioTheme(themeMode = themeMode) {
-                val mainVm: MainViewModel = viewModel(factory = MainViewModelFactory(repository))
-                App(
-                    mainVm = mainVm,
-                    repository = repository,
-                    themeMode = themeMode,
-                    onThemeModeChange = { mode ->
-                        themeMode = mode
-                        themePreferences.setThemeMode(mode)
-                    },
-                )
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background,
+                    contentColor = MaterialTheme.colorScheme.onBackground,
+                ) {
+                    val mainVm: MainViewModel = viewModel(factory = MainViewModelFactory(repository))
+                    App(
+                        mainVm = mainVm,
+                        repository = repository,
+                        themeMode = themeMode,
+                        onThemeModeChange = { mode ->
+                            themeMode = mode
+                            themePreferences.setThemeMode(mode)
+                        },
+                    )
+                }
             }
         }
     }
@@ -152,17 +196,23 @@ class MainActivity : ComponentActivity() {
 private data class TopLevelDestination(
     val route: String,
     val label: String,
-    val icon: androidx.compose.ui.graphics.vector.ImageVector,
+    val selectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
+    val unselectedIcon: androidx.compose.ui.graphics.vector.ImageVector,
 )
 
 private val topDestinations = listOf(
-    TopLevelDestination("home", "Home", Icons.Default.Home),
-    TopLevelDestination("work", "Work", Icons.Default.Work),
-    TopLevelDestination("about", "About", Icons.Default.AccountCircle),
-    TopLevelDestination("contact", "Contact", Icons.Default.Mail),
-    TopLevelDestination("settings", "Settings", Icons.Default.Settings),
+    TopLevelDestination("home", "Home", Icons.Default.Home, Icons.Outlined.Home),
+    TopLevelDestination("work", "Work", Icons.Default.Work, Icons.Outlined.Work),
+    TopLevelDestination("about", "About", Icons.Default.AccountCircle, Icons.Outlined.AccountCircle),
+    TopLevelDestination("contact", "Contact", Icons.Default.Mail, Icons.Outlined.Mail),
+    TopLevelDestination("settings", "Settings", Icons.Default.Settings, Icons.Outlined.Settings),
 )
 
+@OptIn(ExperimentalSharedTransitionApi::class)
+private val LocalSharedTransitionScope = compositionLocalOf<SharedTransitionScope?> { null }
+private val LocalAnimatedVisibilityScope = compositionLocalOf<AnimatedVisibilityScope?> { null }
+
+@OptIn(ExperimentalSharedTransitionApi::class)
 @Composable
 private fun App(
     mainVm: MainViewModel,
@@ -172,114 +222,285 @@ private fun App(
 ) {
     val navController = rememberNavController()
     val state by mainVm.state.collectAsStateWithLifecycle()
+    val appContext = LocalContext.current.applicationContext
+    val imageLoader = rememberSvgImageLoader()
+    LaunchedEffect(state.profile?.avatarUrl, state.featuredWork) {
+        val urls = buildList {
+            state.profile?.avatarUrl?.takeIf { it.isNotBlank() }?.let { add(absoluteUrl(it)) }
+            state.featuredWork
+                .mapNotNull { work -> work.coverImageUrl.takeIf { it.isNotBlank() }?.let(::absoluteUrl) }
+                .forEach(::add)
+        }.distinct().take(8)
+        urls.forEach { url ->
+            imageLoader.enqueue(
+                ImageRequest.Builder(appContext)
+                    .data(url)
+                    .allowHardware(true)
+                    .build(),
+            )
+        }
+    }
 
     Scaffold(
         modifier = Modifier.fillMaxSize(),
+        containerColor = Color.Transparent,
         bottomBar = { if (showBottomBar()) BottomNavBar(navController) },
     ) { padding ->
-        NavHost(
-            navController = navController,
-            startDestination = "home",
-            modifier = Modifier.padding(padding),
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.background,
+                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.55f),
+                        ),
+                    ),
+                )
+                .padding(padding),
         ) {
-            composable("home") {
-                HomeScreen(
-                    state = state,
-                    onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::refresh,
-                    onOpenWork = { navController.navigate("work") },
-                    onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
-                )
-            }
-            composable("work") {
-                WorkScreen(
-                    state = state,
-                    onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::refresh,
-                    onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
-                )
-            }
-            composable(
-                route = "work/{slug}",
-                arguments = listOf(navArgument("slug") { type = NavType.StringType }),
-            ) { backStackEntry ->
-                val slug = backStackEntry.arguments?.getString("slug").orEmpty()
-                val detailVm: WorkDetailViewModel = viewModel(
-                    factory = WorkDetailViewModelFactory(repository, slug),
-                    key = "work-detail-$slug",
-                )
-                val detailState by detailVm.state.collectAsStateWithLifecycle()
-
-                WorkDetailScreen(
-                    slug = slug,
-                    state = detailState,
-                    onRetry = detailVm::refresh,
-                    onBack = { navController.popBackStack() },
-                )
-            }
-            composable("about") {
-                AboutScreen(
-                    state = state,
-                    onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::refresh,
-                )
-            }
-            composable("contact") {
-                ContactScreen(
-                    state = state,
-                    repository = repository,
-                    onRetry = mainVm::refresh,
-                    onPullToRefresh = mainVm::refresh,
-                    onOpenContactForm = { url ->
-                        navController.navigate("contact/form/${Uri.encode(url)}")
+            ScreenEnter {
+                SharedTransitionLayout {
+                    CompositionLocalProvider(LocalSharedTransitionScope provides this) {
+                        NavHost(
+                            navController = navController,
+                            startDestination = "home",
+                        ) {
+                composable("home") {
+                    CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                        HomeScreen(
+                            state = state,
+                            onRetry = mainVm::refresh,
+                            onPullToRefresh = mainVm::refresh,
+                            onOpenWork = { navController.navigate("work") },
+                            onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
+                        )
+                    }
+                }
+                composable(
+                    route = "work",
+                    enterTransition = {
+                        fadeIn(animationSpec = tween(220)) + slideInVertically(
+                            animationSpec = spring(dampingRatio = 0.9f, stiffness = 700f),
+                            initialOffsetY = { it / 16 },
+                        )
                     },
-                )
-            }
-            composable(
-                route = "contact/form/{url}",
-                arguments = listOf(navArgument("url") { type = NavType.StringType }),
-            ) { backStackEntry ->
-                val decodedUrl = Uri.decode(backStackEntry.arguments?.getString("url").orEmpty())
-                ContactFormScreen(
-                    url = decodedUrl,
-                    onBack = { navController.popBackStack() },
-                )
-            }
-            composable("settings") {
-                SettingsScreen(
-                    state = state,
-                    themeMode = themeMode,
-                    onThemeModeChange = onThemeModeChange,
-                )
+                    popEnterTransition = {
+                        fadeIn(animationSpec = tween(220)) + slideInVertically(
+                            animationSpec = spring(dampingRatio = 0.88f, stiffness = 680f),
+                            initialOffsetY = { -it / 14 },
+                        )
+                    },
+                ) {
+                    CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                        WorkScreen(
+                            state = state,
+                            onRetry = mainVm::refresh,
+                            onPullToRefresh = mainVm::refresh,
+                            onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
+                        )
+                    }
+                }
+                composable(
+                    route = "work/{slug}",
+                    arguments = listOf(navArgument("slug") { type = NavType.StringType }),
+                    enterTransition = {
+                        fadeIn(animationSpec = tween(200)) +
+                            scaleIn(
+                                initialScale = 0.965f,
+                                animationSpec = spring(dampingRatio = 0.78f, stiffness = 480f),
+                            ) +
+                            slideInVertically(
+                                animationSpec = spring(dampingRatio = 0.8f, stiffness = 520f),
+                                initialOffsetY = { it / 12 },
+                            )
+                    },
+                    exitTransition = {
+                        fadeOut(animationSpec = tween(120))
+                    },
+                    popEnterTransition = {
+                        fadeIn(animationSpec = tween(170))
+                    },
+                    popExitTransition = {
+                        fadeOut(animationSpec = tween(170)) +
+                            scaleOut(
+                                targetScale = 0.985f,
+                                animationSpec = spring(dampingRatio = 0.9f, stiffness = 700f),
+                            ) +
+                            slideOutVertically(
+                                animationSpec = spring(dampingRatio = 0.88f, stiffness = 760f),
+                                targetOffsetY = { it / 18 },
+                            )
+                    },
+                ) { backStackEntry ->
+                    val slug = backStackEntry.arguments?.getString("slug").orEmpty()
+                    val detailVm: WorkDetailViewModel = viewModel(
+                        factory = WorkDetailViewModelFactory(repository, slug),
+                        key = "work-detail-$slug",
+                    )
+                    val detailState by detailVm.state.collectAsStateWithLifecycle()
+
+                    CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                        WorkDetailScreen(
+                            slug = slug,
+                            state = detailState,
+                            onRetry = detailVm::refresh,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+                composable("about") {
+                    CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                        AboutScreen(
+                            state = state,
+                            onRetry = mainVm::refresh,
+                            onPullToRefresh = mainVm::refresh,
+                        )
+                    }
+                }
+                composable("contact") {
+                    CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                        ContactScreen(
+                            state = state,
+                            repository = repository,
+                            onRetry = mainVm::refresh,
+                            onPullToRefresh = mainVm::refresh,
+                            onOpenContactForm = { url ->
+                                navController.navigate("contact/form/${Uri.encode(url)}")
+                            },
+                        )
+                    }
+                }
+                composable(
+                    route = "contact/form/{url}",
+                    arguments = listOf(navArgument("url") { type = NavType.StringType }),
+                ) { backStackEntry ->
+                    val decodedUrl = Uri.decode(backStackEntry.arguments?.getString("url").orEmpty())
+                    CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                        ContactFormScreen(
+                            url = decodedUrl,
+                            onBack = { navController.popBackStack() },
+                        )
+                    }
+                }
+                    composable("settings") {
+                        CompositionLocalProvider(LocalAnimatedVisibilityScope provides this) {
+                            SettingsScreen(
+                                state = state,
+                                themeMode = themeMode,
+                                onThemeModeChange = onThemeModeChange,
+                            )
+                        }
+                    }
+                }
+                    }
+                }
             }
         }
     }
 }
 
 @Composable
-private fun BottomNavBar(navController: NavHostController) {
+internal fun BottomNavBar(navController: NavHostController) {
     val navBackStackEntry by navController.currentBackStackEntryAsState()
     val currentDestination = navBackStackEntry?.destination
+    val selectedIndex = topDestinations.indexOfFirst { destination ->
+        currentDestination?.hierarchy?.any { it.route == destination.route } == true
+    }.coerceAtLeast(0)
 
-    NavigationBar {
-        topDestinations.forEach { destination ->
-            val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
-            NavigationBarItem(
-                selected = selected,
-                onClick = {
-                    val didPop = navController.popBackStack(destination.route, inclusive = false)
-                    if (!didPop) {
-                        navController.navigate(destination.route) {
-                            popUpTo(navController.graph.findStartDestination().id) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                    }
-                },
-                icon = { Icon(imageVector = destination.icon, contentDescription = destination.label) },
-                label = { Text(destination.label) },
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(80.dp)
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
+    ) {
+        val slotWidth = maxWidth / topDestinations.size
+        val indicatorOffset by animateDpAsState(
+            targetValue = slotWidth * selectedIndex,
+            animationSpec = spring(dampingRatio = 0.82f, stiffness = 650f),
+            label = "navIndicatorOffset",
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(3.dp),
+        ) {
+            Box(
+                modifier = Modifier
+                    .offset(x = indicatorOffset)
+                    .width(slotWidth)
+                    .height(3.dp)
+                    .clip(RoundedCornerShape(999.dp))
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.92f)),
             )
         }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(top = 4.dp),
+        ) {
+            topDestinations.forEach { destination ->
+                val selected = currentDestination?.hierarchy?.any { it.route == destination.route } == true
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .height(76.dp)
+                        .testTag("tab-${destination.route}")
+                        .clickable {
+                            val didPop = navController.popBackStack(destination.route, inclusive = false)
+                            if (!didPop) {
+                                navController.navigate(destination.route) {
+                                    popUpTo(navController.graph.findStartDestination().id) { saveState = true }
+                                    launchSingleTop = true
+                                    restoreState = true
+                                }
+                            }
+                        },
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.Center,
+                ) {
+                    val iconScale by animateFloatAsState(
+                        targetValue = if (selected) 1.1f else 1f,
+                        animationSpec = spring(dampingRatio = 0.72f, stiffness = 520f),
+                        label = "navIconScale",
+                    )
+                    Icon(
+                        imageVector = if (selected) destination.selectedIcon else destination.unselectedIcon,
+                        contentDescription = destination.label,
+                        tint = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier
+                            .size(20.dp)
+                            .graphicsLayer {
+                                scaleX = iconScale
+                                scaleY = iconScale
+                            },
+                    )
+                    Spacer(Modifier.height(4.dp))
+                    Text(
+                        destination.label,
+                        color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun HeroParallaxModifier(listState: androidx.compose.foundation.lazy.LazyListState): Modifier {
+    val rawOffset = when {
+        listState.firstVisibleItemIndex > 0 -> 72f
+        else -> listState.firstVisibleItemScrollOffset.toFloat().coerceAtMost(420f)
+    }
+    val parallaxY = -(rawOffset * 0.14f)
+    val scale = 1f + ((rawOffset / 420f) * 0.018f)
+    return Modifier.graphicsLayer {
+        translationY = parallaxY
+        scaleX = scale
+        scaleY = scale
     }
 }
 
@@ -293,9 +514,14 @@ private fun HomeScreen(
 ) {
     if (state.loading && state.profile == null) return FullScreenLoading("Loading portfolio...")
     if (state.error != null && state.profile == null) return FullScreenError(state.error, onRetry)
+    val listState = rememberLazyListState()
 
     PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+        LazyColumn(
+            state = listState,
+            contentPadding = PaddingValues(16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp),
+        ) {
         if (!state.syncMessage.isNullOrBlank()) {
             item { SyncBanner(message = state.syncMessage) }
         }
@@ -303,7 +529,9 @@ private fun HomeScreen(
             Card(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp)),
+                    .clip(RoundedCornerShape(20.dp))
+                    .then(HeroParallaxModifier(listState)),
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
             ) {
                 Column(
                     modifier = Modifier
@@ -322,7 +550,7 @@ private fun HomeScreen(
                         horizontalArrangement = Arrangement.spacedBy(12.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
-                        AsyncImage(
+                        NetworkImage(
                             model = state.profile?.avatarUrl?.let(::absoluteUrl),
                             contentDescription = state.profile?.name,
                             contentScale = ContentScale.Crop,
@@ -344,12 +572,19 @@ private fun HomeScreen(
                             )
                         }
                     }
-                    Text(state.profile?.tagline.orEmpty(), modifier = Modifier.padding(top = 8.dp))
+                    Text(
+                        state.profile?.tagline.orEmpty(),
+                        modifier = Modifier.padding(top = 8.dp),
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
                     Text(
                         "Shipping reliable product experiences across web, mobile, and ML workflows.",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         modifier = Modifier.padding(top = 6.dp),
+                        maxLines = 3,
+                        overflow = TextOverflow.Ellipsis,
                     )
                 }
             }
@@ -364,7 +599,15 @@ private fun HomeScreen(
                 Text("See all", color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { onOpenWork() })
             }
         }
-            items(state.featuredWork) { item -> WorkCard(item = item, onClick = { onOpenWorkItem(item.slug) }) }
+            itemsIndexed(state.featuredWork, key = { _, item -> item.slug }) { index, item ->
+                StaggeredReveal(index = index) {
+                    WorkCard(
+                        item = item,
+                        cardTag = "home-featured-card-$index",
+                        onClick = { onOpenWorkItem(item.slug) },
+                    )
+                }
+            }
         }
     }
 }
@@ -385,17 +628,38 @@ private fun WorkScreen(
                 item { SyncBanner(message = state.syncMessage) }
             }
             item {
-                Text("Work", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Work",
+                    style = MaterialTheme.typography.headlineMedium,
+                    fontWeight = FontWeight.Bold,
+                    modifier = Modifier.testTag("work-screen-title"),
+                )
                 Text("Case studies and architecture outcomes", style = MaterialTheme.typography.bodyMedium)
             }
-            items(state.work) { item -> WorkCard(item = item, onClick = { onOpenWorkItem(item.slug) }) }
+            itemsIndexed(state.work, key = { _, item -> item.slug }) { index, item ->
+                StaggeredReveal(index = index) {
+                    WorkCard(
+                        item = item,
+                        cardTag = "work-list-card-$index",
+                        onClick = { onOpenWorkItem(item.slug) },
+                    )
+                }
+            }
         }
     }
 }
 
 @Composable
-private fun WorkCard(item: WorkSummaryUi, onClick: () -> Unit) {
+@OptIn(ExperimentalSharedTransitionApi::class)
+private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) {
     val imageLoader = rememberSvgImageLoader()
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.985f else 1f,
+        animationSpec = spring(dampingRatio = 0.75f, stiffness = 450f),
+        label = "workCardPressScale",
+    )
     val hasGenericAvatarCover =
         item.coverImageUrl.contains("tajinder-singh-portrait", ignoreCase = true)
     val coverModel = item.coverImageUrl.takeIf { it.isNotBlank() && !hasGenericAvatarCover }?.let(::absoluteUrl)
@@ -403,21 +667,54 @@ private fun WorkCard(item: WorkSummaryUi, onClick: () -> Unit) {
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick),
-        elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
+            .testTag(cardTag)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            }
+            .clickable(
+                interactionSource = interactionSource,
+                indication = null,
+                onClick = onClick,
+            ),
+        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        colors = CardDefaults.elevatedCardColors(
+            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+        ),
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             if (coverModel != null) {
-                AsyncImage(
-                    imageLoader = imageLoader,
-                    model = coverModel,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(160.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                )
+                val sharedScope = LocalSharedTransitionScope.current
+                val animatedScope = LocalAnimatedVisibilityScope.current
+                if (sharedScope != null && animatedScope != null) {
+                    with(sharedScope) {
+                        NetworkImage(
+                            imageLoader = imageLoader,
+                            model = coverModel,
+                            contentDescription = item.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .sharedElement(
+                                    sharedContentState = rememberSharedContentState(key = "work-cover-${item.slug}"),
+                                    animatedVisibilityScope = animatedScope,
+                                ),
+                        )
+                    }
+                } else {
+                    NetworkImage(
+                        imageLoader = imageLoader,
+                        model = coverModel,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(160.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                    )
+                }
             } else {
                 Box(
                     modifier = Modifier
@@ -455,7 +752,7 @@ private fun WorkCard(item: WorkSummaryUi, onClick: () -> Unit) {
             Text(item.timeline, style = MaterialTheme.typography.bodySmall)
             Text("Updated ${item.updatedAt}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item.tags.forEach { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
+                item.tags.forEach { tag -> AnimatedTagChip(tag = tag) }
             }
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text("View case study", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
@@ -478,6 +775,7 @@ private fun WorkDetailScreen(slug: String, state: WorkDetailUiState, onRetry: ()
 }
 
 @Composable
+@OptIn(ExperimentalSharedTransitionApi::class)
 private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessage: String?) {
     val context = LocalContext.current
     val imageLoader = rememberSvgImageLoader()
@@ -496,27 +794,60 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
             item { SyncBanner(message = syncMessage) }
         }
         item {
-            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.clickable { onBack() }) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                modifier = Modifier
+                    .testTag("work-detail-back")
+                    .clickable { onBack() },
+            ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
                 Spacer(Modifier.width(8.dp))
                 Text("Back", color = MaterialTheme.colorScheme.primary)
             }
             Spacer(Modifier.height(8.dp))
             if (coverModel != null) {
-                AsyncImage(
-                    imageLoader = imageLoader,
-                    model = coverModel,
-                    contentDescription = item.title,
-                    contentScale = ContentScale.Crop,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(180.dp)
-                        .clip(RoundedCornerShape(12.dp)),
-                )
+                val sharedScope = LocalSharedTransitionScope.current
+                val animatedScope = LocalAnimatedVisibilityScope.current
+                if (sharedScope != null && animatedScope != null) {
+                    with(sharedScope) {
+                        NetworkImage(
+                            imageLoader = imageLoader,
+                            model = coverModel,
+                            contentDescription = item.title,
+                            contentScale = ContentScale.Crop,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(180.dp)
+                                .clip(RoundedCornerShape(12.dp))
+                                .sharedElement(
+                                    sharedContentState = rememberSharedContentState(key = "work-cover-${item.slug}"),
+                                    animatedVisibilityScope = animatedScope,
+                                ),
+                        )
+                    }
+                } else {
+                    NetworkImage(
+                        imageLoader = imageLoader,
+                        model = coverModel,
+                        contentDescription = item.title,
+                        contentScale = ContentScale.Crop,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(180.dp)
+                            .clip(RoundedCornerShape(12.dp)),
+                    )
+                }
                 Spacer(Modifier.height(8.dp))
             }
-            Text(item.title, style = MaterialTheme.typography.headlineSmall, fontWeight = FontWeight.Bold)
-            Text(item.summary, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                item.title,
+                style = MaterialTheme.typography.headlineSmall,
+                fontWeight = FontWeight.Bold,
+                modifier = Modifier.testTag("work-detail-title"),
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(item.summary, style = MaterialTheme.typography.bodyLarge, maxLines = 6, overflow = TextOverflow.Ellipsis)
             Text(item.role, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
             Text(item.timeline, style = MaterialTheme.typography.bodyMedium)
             Text(
@@ -527,7 +858,7 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
         }
         item {
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                item.tags.forEach { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
+                item.tags.forEach { tag -> AnimatedTagChip(tag = tag) }
             }
         }
         items(sections) { (title, content) -> SectionCard(title = title, content = content.orEmpty()) }
@@ -548,7 +879,10 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
                 Spacer(Modifier.height(8.dp))
             }
             HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                colors = appElevatedCardColors(),
+            ) {
                 Column(
                     modifier = Modifier.padding(14.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp),
@@ -574,7 +908,10 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
 
 @Composable
 private fun SectionCard(title: String, content: String) {
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = appElevatedCardColors(),
+    ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(cleanDetailText(content), style = MaterialTheme.typography.bodyMedium)
@@ -599,7 +936,7 @@ private fun AboutScreen(
                 item { SyncBanner(message = state.syncMessage) }
             }
             item {
-                AsyncImage(
+                NetworkImage(
                     model = about?.avatarUrl?.let(::absoluteUrl),
                     contentDescription = about?.name,
                     modifier = Modifier
@@ -607,14 +944,14 @@ private fun AboutScreen(
                         .padding(bottom = 10.dp),
                 )
                 Text(about?.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(about?.headline.orEmpty(), style = MaterialTheme.typography.titleMedium)
-                Text(about?.bio.orEmpty(), modifier = Modifier.padding(top = 8.dp))
+                Text(about?.headline.orEmpty(), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
+                Text(about?.bio.orEmpty(), modifier = Modifier.padding(top = 8.dp), maxLines = 8, overflow = TextOverflow.Ellipsis)
             }
             item {
                 Text("Skills", style = MaterialTheme.typography.titleMedium)
                 Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
                     about?.skills?.forEach { skill ->
-                        AssistChip(onClick = {}, label = { Text(skill) }, modifier = Modifier.padding(end = 8.dp))
+                        AnimatedTagChip(tag = skill, modifier = Modifier.padding(end = 8.dp))
                     }
                 }
             }
@@ -694,7 +1031,10 @@ private fun ContactScreen(
                 )
             }
             item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = appElevatedCardColors(),
+                ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text(contact?.email.orEmpty(), style = MaterialTheme.typography.bodyLarge)
                         Button(onClick = {
@@ -709,7 +1049,10 @@ private fun ContactScreen(
                 }
             }
             item {
-                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                ElevatedCard(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = appElevatedCardColors(),
+                ) {
                     Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                         Text("Send Message", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         OutlinedTextField(
@@ -819,6 +1162,7 @@ private fun ContactScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { openUrl(context, link.url) },
+                    colors = appElevatedCardColors(),
                 ) {
                     Row(
                         modifier = Modifier.padding(12.dp),
@@ -861,7 +1205,10 @@ private fun SettingsScreen(
             )
         }
         item {
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                colors = appElevatedCardColors(),
+            ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text("Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -888,7 +1235,10 @@ private fun SettingsScreen(
             }
         }
         item {
-            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+            ElevatedCard(
+                modifier = Modifier.fillMaxWidth(),
+                colors = appElevatedCardColors(),
+            ) {
                 Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     Text("App", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
@@ -936,6 +1286,111 @@ private fun PullRefreshContainer(
             content()
         }
     }
+}
+
+@Composable
+private fun ScreenEnter(content: @Composable () -> Unit) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { visible = true }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(280)) + slideInVertically(
+            animationSpec = tween(320),
+            initialOffsetY = { it / 10 },
+        ),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun StaggeredReveal(index: Int, content: @Composable () -> Unit) {
+    var visible by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        kotlinx.coroutines.delay((index.coerceAtMost(8) * 40L))
+        visible = true
+    }
+    AnimatedVisibility(
+        visible = visible,
+        enter = fadeIn(animationSpec = tween(260)) + slideInVertically(
+            animationSpec = tween(300),
+            initialOffsetY = { it / 7 },
+        ),
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun AnimatedTagChip(tag: String, modifier: Modifier = Modifier) {
+    val interactionSource = remember { MutableInteractionSource() }
+    val isPressed by interactionSource.collectIsPressedAsState()
+    val scale by animateFloatAsState(
+        targetValue = if (isPressed) 0.94f else 1f,
+        animationSpec = spring(dampingRatio = 0.72f, stiffness = 550f),
+        label = "tagChipScale",
+    )
+    AssistChip(
+        onClick = {},
+        interactionSource = interactionSource,
+        label = { Text(tag) },
+        modifier = modifier.graphicsLayer {
+            scaleX = scale
+            scaleY = scale
+        },
+    )
+}
+
+@Composable
+private fun NetworkImage(
+    model: Any?,
+    contentDescription: String?,
+    modifier: Modifier = Modifier,
+    contentScale: ContentScale = ContentScale.Crop,
+    imageLoader: ImageLoader = rememberSvgImageLoader(),
+) {
+    SubcomposeAsyncImage(
+        imageLoader = imageLoader,
+        model = model,
+        contentDescription = contentDescription,
+        contentScale = contentScale,
+        modifier = modifier,
+        loading = {
+            ShimmerPlaceholder(modifier = Modifier.matchParentSize())
+        },
+        error = {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.7f)),
+            )
+        },
+    )
+}
+
+@Composable
+private fun ShimmerPlaceholder(modifier: Modifier = Modifier) {
+    val transition = androidx.compose.animation.core.rememberInfiniteTransition(label = "shimmer")
+    val alpha by transition.animateFloat(
+        initialValue = 0.32f,
+        targetValue = 0.64f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 850),
+            repeatMode = RepeatMode.Reverse,
+        ),
+        label = "shimmerAlpha",
+    )
+    Box(
+        modifier = modifier.background(
+            Brush.linearGradient(
+                colors = listOf(
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha),
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = alpha),
+                ),
+            ),
+        ),
+    )
 }
 
 @Composable
@@ -998,7 +1453,10 @@ private fun ContactFormScreen(url: String, onBack: () -> Unit) {
 @Composable
 private fun SyncBanner(message: String?) {
     if (message.isNullOrBlank()) return
-    ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+    ElevatedCard(
+        modifier = Modifier.fillMaxWidth(),
+        colors = appElevatedCardColors(),
+    ) {
         Row(
             modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
             verticalAlignment = Alignment.CenterVertically,
@@ -1063,6 +1521,11 @@ private fun ThemeMode.label(): String = when (this) {
     ThemeMode.LIGHT -> "Light"
     ThemeMode.DARK -> "Dark"
 }
+
+@Composable
+private fun appElevatedCardColors() = CardDefaults.elevatedCardColors(
+    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+)
 
 private fun cleanDetailText(value: String): String {
     return value
