@@ -1,4 +1,5 @@
 import java.util.Properties
+import org.gradle.api.GradleException
 
 plugins {
     id("com.android.application")
@@ -85,6 +86,21 @@ android {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
         }
+    }
+}
+
+gradle.taskGraph.whenReady {
+    val requiresRealReleaseSigning = allTasks.any { task ->
+        val name = task.name.lowercase()
+        (name.contains("bundle") || name.contains("publish")) && name.contains("release")
+    }
+    val allowDebugSignedRelease = System.getenv("ALLOW_DEBUG_SIGNED_RELEASE") == "true"
+
+    if (requiresRealReleaseSigning && !hasReleaseSigning && !allowDebugSignedRelease) {
+        throw GradleException(
+            "Release signing is not configured. Set keystore.properties or ANDROID_* signing env vars. " +
+                "For local smoke checks only, set ALLOW_DEBUG_SIGNED_RELEASE=true.",
+        )
     }
 }
 

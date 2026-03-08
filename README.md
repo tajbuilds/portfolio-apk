@@ -5,7 +5,7 @@ Native Android app for Taj's portfolio API (`https://tajs.io/api/mobile/*`).
 ## Prerequisites
 
 - JDK 17
-- Android SDK (API 34)
+- Android SDK (API 36 recommended)
 - `adb` available in `PATH`
 
 ## Local Run (Step-by-step)
@@ -75,7 +75,28 @@ Create local template:
 cp keystore.properties.example keystore.properties
 ```
 
-If signing values are missing, release builds fall back to debug signing (useful for smoke checks only).
+Release AAB builds now require proper release signing by default.
+For local smoke checks only, use:
+
+```bash
+ALLOW_DEBUG_SIGNED_RELEASE=true ./gradlew :app:bundleRelease
+```
+
+Production uploads must use a real release key.
+
+## Play Store Deployment
+
+Use the full runbook in [PLAYSTORE_RELEASE.md](/c:/dev/portfolio-apk/PLAYSTORE_RELEASE.md).
+
+### Pending (Manual in Play Console)
+
+These cannot be automated from code and must be completed in your Play account:
+
+1. Data Safety form
+2. Privacy Policy URL
+3. Store listing assets (icon, feature graphic, screenshots, descriptions)
+4. App content declarations (ads, audience, etc.)
+5. Testing tracks setup (internal/closed/open) and rollout
 
 ## Cache and Offline Behavior
 
