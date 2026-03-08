@@ -4,7 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
 import com.taj.portfolio.data.PortfolioRepository
-import com.taj.portfolio.data.WorkDetail
+import com.taj.portfolio.ui.model.WorkDetailUi
+import com.taj.portfolio.ui.model.toUi
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
@@ -14,7 +15,9 @@ data class WorkDetailUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val syncMessage: String? = null,
-    val item: WorkDetail? = null,
+    val apiVersion: String? = null,
+    val generatedAt: String? = null,
+    val item: WorkDetailUi? = null,
 )
 
 class WorkDetailViewModel(
@@ -31,24 +34,35 @@ class WorkDetailViewModel(
     fun refresh() {
         viewModelScope.launch {
             val cachedResult = repository.getCachedDetail(slug)
-            val cached = cachedResult.value?.item
+            val cachedEnvelope = cachedResult.value
+            val cached = cachedEnvelope?.item?.toUi()
+            val cachedVersion = cachedEnvelope?.version
             if (cached != null) {
-                _state.value = WorkDetailUiState(loading = true, item = cached)
+                _state.value = WorkDetailUiState(
+                    loading = true,
+                    item = cached,
+                    apiVersion = cachedVersion,
+                    generatedAt = cachedResult.generatedAt,
+                )
             } else {
                 _state.value = WorkDetailUiState(loading = true)
             }
 
-            val refreshed = runCatching { repository.refreshDetail(slug).item }.getOrNull()
+            val refreshedResponse = runCatching { repository.refreshDetail(slug) }.getOrNull()
+            val refreshed = refreshedResponse?.item?.toUi()
             _state.value = when {
-                refreshed != null -> WorkDetailUiState(loading = false, item = refreshed)
+                refreshed != null -> WorkDetailUiState(
+                    loading = false,
+                    item = refreshed,
+                    apiVersion = refreshedResponse.version,
+                    generatedAt = refreshedResponse.generatedAt,
+                )
                 cached != null -> WorkDetailUiState(
                     loading = false,
                     item = cached,
-                    syncMessage = if (cachedResult.isStale) {
-                        "Couldn't refresh this case study. Showing stale cached content."
-                    } else {
-                        "Couldn't refresh this case study. Showing cached content."
-                    },
+                    syncMessage = null,
+                    apiVersion = cachedVersion,
+                    generatedAt = cachedResult.generatedAt,
                 )
                 else -> WorkDetailUiState(loading = false, error = "Failed to load work item")
             }

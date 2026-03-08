@@ -1,9 +1,10 @@
-package com.taj.portfolio
+﻿package com.taj.portfolio
 
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import android.webkit.WebView
+import android.webkit.WebChromeClient
 import android.webkit.WebViewClient
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
@@ -13,6 +14,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
@@ -32,9 +34,13 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AccountCircle
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.OpenInNew
+import androidx.compose.material.icons.filled.Brightness4
+import androidx.compose.material.icons.filled.Brightness7
+import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Mail
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Work
 import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
@@ -42,23 +48,33 @@ import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.pulltorefresh.PullToRefreshBox
+import androidx.compose.material3.pulltorefresh.PullToRefreshDefaults
+import androidx.compose.material3.pulltorefresh.rememberPullToRefreshState
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -78,13 +94,12 @@ import com.google.gson.Gson
 import com.tajbuilds.portfolio.BuildConfig
 import com.taj.portfolio.data.PortfolioApi
 import com.taj.portfolio.data.PortfolioRepository
-import com.taj.portfolio.data.WorkDetail
-import com.taj.portfolio.data.WorkSummary
 import com.taj.portfolio.data.cache.AppDatabase
+import com.taj.portfolio.ui.model.WorkDetailUi
+import com.taj.portfolio.ui.model.WorkSummaryUi
 import com.taj.portfolio.ui.theme.PortfolioTheme
-import org.commonmark.ext.gfm.tables.TablesExtension
-import org.commonmark.parser.Parser
-import org.commonmark.renderer.html.HtmlRenderer
+import com.taj.portfolio.ui.theme.ThemeMode
+import com.taj.portfolio.ui.theme.ThemePreferences
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 
@@ -105,11 +120,21 @@ class MainActivity : ComponentActivity() {
             cacheDao = db.cacheDao(),
             gson = gson,
         )
+        val themePreferences = ThemePreferences(applicationContext)
 
         setContent {
-            PortfolioTheme {
+            var themeMode by remember { mutableStateOf(themePreferences.getThemeMode()) }
+            PortfolioTheme(themeMode = themeMode) {
                 val mainVm: MainViewModel = viewModel(factory = MainViewModelFactory(repository))
-                App(mainVm, repository)
+                App(
+                    mainVm = mainVm,
+                    repository = repository,
+                    themeMode = themeMode,
+                    onThemeModeChange = { mode ->
+                        themeMode = mode
+                        themePreferences.setThemeMode(mode)
+                    },
+                )
             }
         }
     }
@@ -126,10 +151,16 @@ private val topDestinations = listOf(
     TopLevelDestination("work", "Work", Icons.Default.Work),
     TopLevelDestination("about", "About", Icons.Default.AccountCircle),
     TopLevelDestination("contact", "Contact", Icons.Default.Mail),
+    TopLevelDestination("settings", "Settings", Icons.Default.Settings),
 )
 
 @Composable
-private fun App(mainVm: MainViewModel, repository: PortfolioRepository) {
+private fun App(
+    mainVm: MainViewModel,
+    repository: PortfolioRepository,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
+) {
     val navController = rememberNavController()
     val state by mainVm.state.collectAsStateWithLifecycle()
 
@@ -146,6 +177,7 @@ private fun App(mainVm: MainViewModel, repository: PortfolioRepository) {
                 HomeScreen(
                     state = state,
                     onRetry = mainVm::refresh,
+                    onPullToRefresh = mainVm::clearCacheAndRefresh,
                     onOpenWork = { navController.navigate("work") },
                     onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
                 )
@@ -154,6 +186,7 @@ private fun App(mainVm: MainViewModel, repository: PortfolioRepository) {
                 WorkScreen(
                     state = state,
                     onRetry = mainVm::refresh,
+                    onPullToRefresh = mainVm::clearCacheAndRefresh,
                     onOpenWorkItem = { slug -> navController.navigate("work/$slug") },
                 )
             }
@@ -175,8 +208,40 @@ private fun App(mainVm: MainViewModel, repository: PortfolioRepository) {
                     onBack = { navController.popBackStack() },
                 )
             }
-            composable("about") { AboutScreen(state = state, onRetry = mainVm::refresh) }
-            composable("contact") { ContactScreen(state = state, onRetry = mainVm::refresh) }
+            composable("about") {
+                AboutScreen(
+                    state = state,
+                    onRetry = mainVm::refresh,
+                    onPullToRefresh = mainVm::clearCacheAndRefresh,
+                )
+            }
+            composable("contact") {
+                ContactScreen(
+                    state = state,
+                    onRetry = mainVm::refresh,
+                    onPullToRefresh = mainVm::clearCacheAndRefresh,
+                    onOpenContactForm = { url ->
+                        navController.navigate("contact/form/${Uri.encode(url)}")
+                    },
+                )
+            }
+            composable(
+                route = "contact/form/{url}",
+                arguments = listOf(navArgument("url") { type = NavType.StringType }),
+            ) { backStackEntry ->
+                val decodedUrl = Uri.decode(backStackEntry.arguments?.getString("url").orEmpty())
+                ContactFormScreen(
+                    url = decodedUrl,
+                    onBack = { navController.popBackStack() },
+                )
+            }
+            composable("settings") {
+                SettingsScreen(
+                    state = state,
+                    themeMode = themeMode,
+                    onThemeModeChange = onThemeModeChange,
+                )
+            }
         }
     }
 }
@@ -209,6 +274,7 @@ private fun BottomNavBar(navController: NavHostController) {
 private fun HomeScreen(
     state: MainUiState,
     onRetry: () -> Unit,
+    onPullToRefresh: () -> Unit,
     onOpenWork: () -> Unit,
     onOpenWorkItem: (String) -> Unit,
 ) {
@@ -216,16 +282,28 @@ private fun HomeScreen(
     if (state.loading && state.profile == null) return FullScreenLoading("Loading portfolio...")
     if (state.error != null && state.profile == null) return FullScreenError(state.error, onRetry)
 
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
+    PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
+        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(16.dp)) {
         if (!state.syncMessage.isNullOrBlank()) {
             item { SyncBanner(message = state.syncMessage) }
         }
         item {
-            Card(modifier = Modifier.fillMaxWidth()) {
+            Card(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(20.dp)),
+            ) {
                 Column(
                     modifier = Modifier
-                        .background(MaterialTheme.colorScheme.surfaceVariant)
-                        .padding(16.dp),
+                        .background(
+                            Brush.verticalGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    MaterialTheme.colorScheme.surface,
+                                ),
+                            ),
+                        )
+                        .padding(18.dp),
                 ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
@@ -255,6 +333,12 @@ private fun HomeScreen(
                         }
                     }
                     Text(state.profile?.tagline.orEmpty(), modifier = Modifier.padding(top = 8.dp))
+                    Text(
+                        "Shipping reliable product experiences across web, mobile, and ML workflows.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
                     Row(
                         modifier = Modifier.padding(top = 12.dp),
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
@@ -273,6 +357,7 @@ private fun HomeScreen(
                                 Text(cta.secondary.label)
                             }
                         }
+                        OutlinedButton(onClick = onOpenWork) { Text("Explore Work") }
                     }
                 }
             }
@@ -287,7 +372,8 @@ private fun HomeScreen(
                 Text("See all", color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { onOpenWork() })
             }
         }
-        items(state.featuredWork) { item -> WorkCard(item = item, onClick = { onOpenWorkItem(item.slug) }) }
+            items(state.featuredWork) { item -> WorkCard(item = item, onClick = { onOpenWorkItem(item.slug) }) }
+        }
     }
 }
 
@@ -295,25 +381,32 @@ private fun HomeScreen(
 private fun WorkScreen(
     state: MainUiState,
     onRetry: () -> Unit,
+    onPullToRefresh: () -> Unit,
     onOpenWorkItem: (String) -> Unit,
 ) {
     if (state.loading && state.work.isEmpty()) return FullScreenLoading("Loading projects...")
     if (state.error != null && state.work.isEmpty()) return FullScreenError(state.error, onRetry)
 
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (!state.syncMessage.isNullOrBlank()) {
-            item { SyncBanner(message = state.syncMessage) }
+    PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
+        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!state.syncMessage.isNullOrBlank()) {
+                item { SyncBanner(message = state.syncMessage) }
+            }
+            item {
+                Text("Work", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text("Case studies and architecture outcomes", style = MaterialTheme.typography.bodyMedium)
+            }
+            items(state.work) { item -> WorkCard(item = item, onClick = { onOpenWorkItem(item.slug) }) }
         }
-        item {
-            Text("Work", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text("Case studies and architecture outcomes", style = MaterialTheme.typography.bodyMedium)
-        }
-        items(state.work) { item -> WorkCard(item = item, onClick = { onOpenWorkItem(item.slug) }) }
     }
 }
 
 @Composable
-private fun WorkCard(item: WorkSummary, onClick: () -> Unit) {
+private fun WorkCard(item: WorkSummaryUi, onClick: () -> Unit) {
+    val hasGenericAvatarCover =
+        item.coverImageUrl.contains("tajinder-singh-portrait", ignoreCase = true)
+    val coverModel = item.coverImageUrl.takeIf { it.isNotBlank() && !hasGenericAvatarCover }?.let(::absoluteUrl)
+
     ElevatedCard(
         modifier = Modifier
             .fillMaxWidth()
@@ -321,22 +414,63 @@ private fun WorkCard(item: WorkSummary, onClick: () -> Unit) {
         elevation = CardDefaults.cardElevation(defaultElevation = 3.dp),
     ) {
         Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            AsyncImage(
-                model = absoluteUrl(item.coverImageUrl),
-                contentDescription = item.title,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(160.dp)
-                    .clip(RoundedCornerShape(12.dp)),
-            )
+            if (coverModel != null) {
+                AsyncImage(
+                    model = coverModel,
+                    contentDescription = item.title,
+                    contentScale = ContentScale.Crop,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(12.dp)),
+                )
+            } else {
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(160.dp)
+                        .clip(RoundedCornerShape(12.dp))
+                        .background(
+                            Brush.linearGradient(
+                                colors = listOf(
+                                    MaterialTheme.colorScheme.surfaceVariant,
+                                    MaterialTheme.colorScheme.surface,
+                                ),
+                            ),
+                        )
+                        .padding(12.dp),
+                    contentAlignment = Alignment.BottomStart,
+                ) {
+                    Text(
+                        text = item.title,
+                        style = MaterialTheme.typography.titleSmall,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        maxLines = 2,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
+            }
             Text(item.title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-            Text(item.summary, style = MaterialTheme.typography.bodyMedium)
+            Text(
+                item.summary,
+                style = MaterialTheme.typography.bodyMedium,
+                maxLines = 2,
+                overflow = TextOverflow.Ellipsis,
+            )
             Text(item.role, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
             Text(item.timeline, style = MaterialTheme.typography.bodySmall)
             Text("Updated ${item.updatedAt}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
             Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 item.tags.forEach { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
+            }
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text("View case study", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(16.dp),
+                )
             }
         }
     }
@@ -350,9 +484,15 @@ private fun WorkDetailScreen(slug: String, state: WorkDetailUiState, onRetry: ()
 }
 
 @Composable
-private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit, syncMessage: String?) {
+private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessage: String?) {
     val context = LocalContext.current
-    val html = remember(item.content.body) { markdownToHtml(item.content.body) }
+    val sections = listOf(
+        "Context" to item.sections?.context,
+        "Constraints" to item.sections?.constraints,
+        "Approach" to item.sections?.approach,
+        "Outcome" to item.sections?.outcome,
+        "Learnings" to item.sections?.learnings,
+    ).filter { (_, content) -> !content.isNullOrBlank() }
 
     LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         if (!syncMessage.isNullOrBlank()) {
@@ -380,14 +520,7 @@ private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit, syncMessage:
                 item.tags.forEach { tag -> AssistChip(onClick = {}, label = { Text(tag) }) }
             }
         }
-        item {
-            val sections = item.sections
-            if (sections?.context?.isNotBlank() == true) SectionCard("Context", sections.context)
-            if (sections?.constraints?.isNotBlank() == true) SectionCard("Constraints", sections.constraints)
-            if (sections?.approach?.isNotBlank() == true) SectionCard("Approach", sections.approach)
-            if (sections?.outcome?.isNotBlank() == true) SectionCard("Outcome", sections.outcome)
-            if (sections?.learnings?.isNotBlank() == true) SectionCard("Learnings", sections.learnings)
-        }
+        items(sections) { (title, content) -> SectionCard(title = title, content = content.orEmpty()) }
         item {
             item.links?.let { links ->
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -404,9 +537,27 @@ private fun WorkDetailContent(item: WorkDetail, onBack: () -> Unit, syncMessage:
                 }
                 Spacer(Modifier.height(8.dp))
             }
-            HorizontalDivider()
-            Text("Full Case Study", style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
-            MarkdownView(html = html)
+            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(
+                    modifier = Modifier.padding(14.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp),
+                ) {
+                    Text(
+                        "Case Study Notes",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                    )
+                    Text(
+                        "Open the full web version for complete narrative, media, and technical details.",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    OutlinedButton(onClick = { openUrl(context, absoluteUrl("/work/${item.slug}/")) }) {
+                        Text("Open Full Web Case Study")
+                    }
+                }
+            }
         }
     }
 }
@@ -422,57 +573,64 @@ private fun SectionCard(title: String, content: String) {
 }
 
 @Composable
-private fun AboutScreen(state: MainUiState, onRetry: () -> Unit) {
+private fun AboutScreen(
+    state: MainUiState,
+    onRetry: () -> Unit,
+    onPullToRefresh: () -> Unit,
+) {
     val context = LocalContext.current
     if (state.loading && state.about == null) return FullScreenLoading("Loading about...")
     if (state.error != null && state.about == null) return FullScreenError(state.error, onRetry)
 
     val about = state.about
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        if (!state.syncMessage.isNullOrBlank()) {
-            item { SyncBanner(message = state.syncMessage) }
-        }
-        item {
-            AsyncImage(
-                model = about?.avatarUrl?.let(::absoluteUrl),
-                contentDescription = about?.name,
-                modifier = Modifier
-                    .size(88.dp)
-                    .padding(bottom = 10.dp),
-            )
-            Text(about?.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(about?.headline.orEmpty(), style = MaterialTheme.typography.titleMedium)
-            Text(about?.bio.orEmpty(), modifier = Modifier.padding(top = 8.dp))
-        }
-        item {
-            Text("Skills", style = MaterialTheme.typography.titleMedium)
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                about?.skills?.forEach { skill ->
-                    AssistChip(onClick = {}, label = { Text(skill) }, modifier = Modifier.padding(end = 8.dp))
+    PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
+        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            if (!state.syncMessage.isNullOrBlank()) {
+                item { SyncBanner(message = state.syncMessage) }
+            }
+            item {
+                AsyncImage(
+                    model = about?.avatarUrl?.let(::absoluteUrl),
+                    contentDescription = about?.name,
+                    modifier = Modifier
+                        .size(88.dp)
+                        .padding(bottom = 10.dp),
+                )
+                Text(about?.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(about?.headline.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                Text(about?.bio.orEmpty(), modifier = Modifier.padding(top = 8.dp))
+            }
+            item {
+                Text("Skills", style = MaterialTheme.typography.titleMedium)
+                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                    about?.skills?.forEach { skill ->
+                        AssistChip(onClick = {}, label = { Text(skill) }, modifier = Modifier.padding(end = 8.dp))
+                    }
                 }
             }
-        }
-        item {
-            Text("Focus Areas", style = MaterialTheme.typography.titleMedium)
-            Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { about?.focusAreas?.forEach { area -> Text("- $area") } }
-        }
-        item {
-            if (!about?.social.isNullOrEmpty()) {
-                Text("Social", style = MaterialTheme.typography.titleMedium)
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                    about?.social?.forEach { social ->
-                        Row(
-                            modifier = Modifier.clickable { openUrl(context, social.url) },
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(6.dp),
-                        ) {
-                            Text(social.label, color = MaterialTheme.colorScheme.primary)
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(16.dp),
-                            )
+            item {
+                Text("Focus Areas", style = MaterialTheme.typography.titleMedium)
+                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { about?.focusAreas?.forEach { area -> Text("- $area") } }
+            }
+            item {
+                val socialLinks = about?.social.orEmpty()
+                if (socialLinks.isNotEmpty()) {
+                    Text("Social", style = MaterialTheme.typography.titleMedium)
+                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
+                        socialLinks.forEach { social ->
+                            Row(
+                                modifier = Modifier.clickable { openUrl(context, social.url) },
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(6.dp),
+                            ) {
+                                Text(social.label, color = MaterialTheme.colorScheme.primary)
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(16.dp),
+                                )
+                            }
                         }
                     }
                 }
@@ -482,58 +640,222 @@ private fun AboutScreen(state: MainUiState, onRetry: () -> Unit) {
 }
 
 @Composable
-private fun ContactScreen(state: MainUiState, onRetry: () -> Unit) {
+private fun ContactScreen(
+    state: MainUiState,
+    onRetry: () -> Unit,
+    onPullToRefresh: () -> Unit,
+    onOpenContactForm: (String) -> Unit,
+) {
     val context = LocalContext.current
     if (state.loading && state.contact == null) return FullScreenLoading("Loading contact...")
     if (state.error != null && state.contact == null) return FullScreenError(state.error, onRetry)
 
     val contact = state.contact
-    Column(
+    PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(12.dp),
+        ) {
+            item {
+                if (!state.syncMessage.isNullOrBlank()) {
+                    SyncBanner(message = state.syncMessage)
+                }
+            }
+            item {
+                Text("Contact", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+                Text(
+                    "Reach out directly or open the embedded form.",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            item {
+                ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                        Text(contact?.email.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                        Button(onClick = {
+                            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${contact?.email.orEmpty()}"))
+                            runCatching { context.startActivity(intent) }
+                        }) {
+                            Icon(Icons.Default.Mail, contentDescription = null)
+                            Spacer(Modifier.width(8.dp))
+                            Text("Email Me")
+                        }
+                        contact?.formPath?.takeIf { it.isNotBlank() }?.let { formPath ->
+                            OutlinedButton(onClick = { onOpenContactForm(absoluteContactFormUrl(formPath)) }) {
+                                Text("Open Contact Form In App")
+                            }
+                        }
+                    }
+                }
+            }
+
+            item {
+                if (contact?.turnstileRequired == true) {
+                    Text("Form submission is protected by Turnstile.", style = MaterialTheme.typography.bodySmall)
+                }
+            }
+
+            items(contact?.links.orEmpty()) { link ->
+                ElevatedCard(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { openUrl(context, link.url) },
+                ) {
+                    Row(
+                        modifier = Modifier.padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    ) {
+                        Text(link.label, color = MaterialTheme.colorScheme.primary)
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(16.dp),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
+private fun SettingsScreen(
+    state: MainUiState,
+    themeMode: ThemeMode,
+    onThemeModeChange: (ThemeMode) -> Unit,
+) {
+    val context = LocalContext.current
+    LazyColumn(
         modifier = Modifier
             .fillMaxSize()
             .padding(16.dp),
         verticalArrangement = Arrangement.spacedBy(12.dp),
     ) {
-        if (!state.syncMessage.isNullOrBlank()) {
-            SyncBanner(message = state.syncMessage)
+        item {
+            Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+            Text(
+                "Customize appearance and app behavior.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
         }
-        Text("Contact", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-        Text(contact?.email.orEmpty(), style = MaterialTheme.typography.bodyLarge)
-
-        Button(onClick = {
-            val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${contact?.email.orEmpty()}"))
-            runCatching { context.startActivity(intent) }
-        }) {
-            Icon(Icons.Default.Mail, contentDescription = null)
-            Spacer(Modifier.width(8.dp))
-            Text("Email Me")
-        }
-
-        contact?.formPath?.takeIf { it.isNotBlank() }?.let { formPath ->
-            Button(onClick = { openUrl(context, absoluteUrl(formPath)) }) {
-                Text("Open Contact Form")
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text("Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        ThemeMode.entries.forEach { mode ->
+                            FilterChip(
+                                selected = themeMode == mode,
+                                onClick = { onThemeModeChange(mode) },
+                                label = { Text(mode.label()) },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = when (mode) {
+                                            ThemeMode.SYSTEM -> Icons.Default.BrightnessAuto
+                                            ThemeMode.LIGHT -> Icons.Default.Brightness7
+                                            ThemeMode.DARK -> Icons.Default.Brightness4
+                                        },
+                                        contentDescription = null,
+                                        modifier = Modifier.size(16.dp),
+                                    )
+                                },
+                            )
+                        }
+                    }
+                }
             }
         }
-
-        if (contact?.turnstileRequired == true) {
-            Text("Form submission is protected by Turnstile.", style = MaterialTheme.typography.bodySmall)
+        item {
+            ElevatedCard(modifier = Modifier.fillMaxWidth()) {
+                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text("App", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
+                    Text("Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
+                    Text("API contract ${state.apiVersion ?: "unknown"}")
+                    Text("API ${BuildConfig.API_BASE_URL}")
+                    state.latestGeneratedAt?.let { generatedAt ->
+                        Text("Latest data generated at $generatedAt")
+                    }
+                    OutlinedButton(onClick = { openUrl(context, BuildConfig.API_BASE_URL) }) {
+                        Text("Open Website")
+                    }
+                }
+            }
         }
+    }
+}
 
-        contact?.links?.forEach { link ->
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun PullRefreshContainer(
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    content: @Composable () -> Unit,
+) {
+    val pullToRefreshState = rememberPullToRefreshState()
+    PullToRefreshBox(
+        isRefreshing = refreshing,
+        onRefresh = onRefresh,
+        state = pullToRefreshState,
+        modifier = Modifier.fillMaxSize(),
+        indicator = {
+            PullToRefreshDefaults.Indicator(
+                state = pullToRefreshState,
+                isRefreshing = refreshing,
+                modifier = Modifier.align(Alignment.TopCenter),
+            )
+        },
+    ) {
+        content()
+    }
+}
+
+@Composable
+private fun ContactFormScreen(url: String, onBack: () -> Unit) {
+    val context = LocalContext.current
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.SpaceBetween,
+        ) {
             Row(
-                modifier = Modifier.clickable { openUrl(context, link.url) },
+                modifier = Modifier.clickable(onClick = onBack),
                 verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(6.dp),
             ) {
-                Text(link.label, color = MaterialTheme.colorScheme.primary)
+                Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
+                Spacer(Modifier.width(6.dp))
+                Text("Back", color = MaterialTheme.colorScheme.primary)
+            }
+            IconButton(onClick = { openUrl(context, url) }) {
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp),
+                    contentDescription = "Open in browser",
                 )
             }
         }
+        AndroidView(
+            factory = { viewContext ->
+                WebView(viewContext).apply {
+                    settings.javaScriptEnabled = true
+                    settings.domStorageEnabled = true
+                    webViewClient = WebViewClient()
+                    webChromeClient = WebChromeClient()
+                }
+            },
+            update = { webView -> webView.loadUrl(url) },
+            modifier = Modifier.fillMaxSize(),
+        )
     }
 }
 
@@ -587,52 +909,12 @@ private fun FullScreenError(message: String?, onRetry: () -> Unit) {
     }
 }
 
-@Composable
-private fun MarkdownView(html: String) {
-    AndroidView(
-        factory = { context ->
-            WebView(context).apply {
-                settings.javaScriptEnabled = false
-                webViewClient = WebViewClient()
-            }
-        },
-        update = { webView ->
-            webView.loadDataWithBaseURL(BuildConfig.API_BASE_URL, wrapHtml(html), "text/html", "utf-8", null)
-        },
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(720.dp),
-    )
-}
-
-private fun markdownToHtml(markdown: String): String {
-    val extensions = listOf(TablesExtension.create())
-    val parser = Parser.builder().extensions(extensions).build()
-    val renderer = HtmlRenderer.builder().extensions(extensions).build()
-    return renderer.render(parser.parse(markdown))
-}
-
-private fun wrapHtml(body: String): String {
-    return """
-        <html>
-          <head>
-            <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-            <style>
-              body { font-family: sans-serif; padding: 4px; line-height: 1.5; color: #121212; }
-              img { max-width: 100%; height: auto; border-radius: 10px; }
-              pre { white-space: pre-wrap; background: #f4f4f4; padding: 8px; border-radius: 8px; }
-              code { font-family: monospace; }
-              table { width: 100%; border-collapse: collapse; }
-              th, td { border: 1px solid #ddd; padding: 6px; }
-            </style>
-          </head>
-          <body>$body</body>
-        </html>
-    """.trimIndent()
-}
-
 private fun absoluteUrl(pathOrUrl: String): String {
     return resolveUrl(BuildConfig.API_BASE_URL, pathOrUrl)
+}
+
+private fun absoluteContactFormUrl(pathOrUrl: String): String {
+    return resolveContactFormUrl(BuildConfig.API_BASE_URL, pathOrUrl)
 }
 
 private fun openUrl(context: android.content.Context, url: String) {
@@ -640,9 +922,18 @@ private fun openUrl(context: android.content.Context, url: String) {
     runCatching { context.startActivity(intent) }
 }
 
+private fun ThemeMode.label(): String = when (this) {
+    ThemeMode.SYSTEM -> "System"
+    ThemeMode.LIGHT -> "Light"
+    ThemeMode.DARK -> "Dark"
+}
+
 @Composable
 private fun showBottomBar(navController: NavHostController): Boolean {
     val backStackEntry by navController.currentBackStackEntryAsState()
     val route = backStackEntry?.destination?.route
-    return route in setOf("home", "work", "about", "contact")
+    return route in setOf("home", "work", "about", "contact", "settings")
 }
+
+
+

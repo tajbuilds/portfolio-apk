@@ -1,36 +1,41 @@
 package com.taj.portfolio.data
 
+interface MobileEnvelope {
+    val version: String
+    val generatedAt: String?
+}
+
 data class HomeResponse(
-    val version: String,
-    val generatedAt: String,
+    override val version: String,
+    override val generatedAt: String?,
     val profile: Profile,
     val featuredWork: List<WorkSummary>,
     val cta: Cta,
-)
+) : MobileEnvelope
 
 data class WorkListResponse(
-    val version: String,
-    val generatedAt: String,
+    override val version: String,
+    override val generatedAt: String?,
     val items: List<WorkSummary>,
-)
+) : MobileEnvelope
 
 data class WorkDetailResponse(
-    val version: String,
-    val generatedAt: String,
+    override val version: String,
+    override val generatedAt: String?,
     val item: WorkDetail,
-)
+) : MobileEnvelope
 
 data class AboutResponse(
-    val version: String,
-    val generatedAt: String,
+    override val version: String,
+    override val generatedAt: String?,
     val about: About,
-)
+) : MobileEnvelope
 
 data class ContactResponse(
-    val version: String,
-    val generatedAt: String,
+    override val version: String,
+    override val generatedAt: String?,
     val contact: Contact,
-)
+) : MobileEnvelope
 
 data class Profile(
     val name: String,

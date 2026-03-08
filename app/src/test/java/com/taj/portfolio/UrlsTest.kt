@@ -19,4 +19,12 @@ class UrlsTest {
 
         assertEquals("https://tajs.io/api/mobile/home", resolveUrl(baseUrl, relative))
     }
+
+    @Test
+    fun `contact form path strips api prefix`() {
+        val baseUrl = "https://tajs.io/"
+        val contactFormPath = "/api/contact"
+
+        assertEquals("https://tajs.io/contact", resolveContactFormUrl(baseUrl, contactFormPath))
+    }
 }

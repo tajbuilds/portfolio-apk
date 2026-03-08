@@ -16,6 +16,9 @@ interface CacheDao {
     @Query("DELETE FROM cache_blob WHERE updatedAt < :olderThan")
     suspend fun deleteOlderThan(olderThan: Long)
 
+    @Query("DELETE FROM cache_blob")
+    suspend fun clearAll()
+
     @Insert(onConflict = OnConflictStrategy.REPLACE)
     suspend fun put(blob: CacheBlobEntity)
 }

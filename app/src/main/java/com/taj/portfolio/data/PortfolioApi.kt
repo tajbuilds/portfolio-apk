@@ -5,17 +5,17 @@ import retrofit2.http.Path
 
 interface PortfolioApi {
     @GET("api/mobile/home")
-    suspend fun getHome(): HomeResponse
+    suspend fun getHome(): HomeResponseDto
 
     @GET("api/mobile/work")
-    suspend fun getWork(): WorkListResponse
+    suspend fun getWork(): WorkListResponseDto
 
     @GET("api/mobile/work/{slug}")
-    suspend fun getWorkDetail(@Path("slug") slug: String): WorkDetailResponse
+    suspend fun getWorkDetail(@Path("slug") slug: String): WorkDetailResponseDto
 
     @GET("api/mobile/about")
-    suspend fun getAbout(): AboutResponse
+    suspend fun getAbout(): AboutResponseDto
 
     @GET("api/mobile/contact")
-    suspend fun getContact(): ContactResponse
+    suspend fun getContact(): ContactResponseDto
 }

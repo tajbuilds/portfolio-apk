@@ -2,12 +2,13 @@ package com.taj.portfolio
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
-import com.taj.portfolio.data.About
-import com.taj.portfolio.data.Cta
-import com.taj.portfolio.data.Contact
 import com.taj.portfolio.data.PortfolioRepository
-import com.taj.portfolio.data.Profile
-import com.taj.portfolio.data.WorkSummary
+import com.taj.portfolio.ui.model.AboutUi
+import com.taj.portfolio.ui.model.ContactUi
+import com.taj.portfolio.ui.model.CtaUi
+import com.taj.portfolio.ui.model.ProfileUi
+import com.taj.portfolio.ui.model.WorkSummaryUi
+import com.taj.portfolio.ui.model.toUi
 import kotlinx.coroutines.async
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -18,12 +19,14 @@ data class MainUiState(
     val loading: Boolean = true,
     val error: String? = null,
     val syncMessage: String? = null,
-    val profile: Profile? = null,
-    val cta: Cta? = null,
-    val featuredWork: List<WorkSummary> = emptyList(),
-    val work: List<WorkSummary> = emptyList(),
-    val about: About? = null,
-    val contact: Contact? = null,
+    val apiVersion: String? = null,
+    val latestGeneratedAt: String? = null,
+    val profile: ProfileUi? = null,
+    val cta: CtaUi? = null,
+    val featuredWork: List<WorkSummaryUi> = emptyList(),
+    val work: List<WorkSummaryUi> = emptyList(),
+    val about: AboutUi? = null,
+    val contact: ContactUi? = null,
 )
 
 class MainViewModel(private val repository: PortfolioRepository) : ViewModel() {
@@ -53,12 +56,19 @@ class MainViewModel(private val repository: PortfolioRepository) : ViewModel() {
 
             _state.value = MainUiState(
                 loading = true,
-                profile = home?.profile,
-                cta = home?.cta,
-                featuredWork = home?.featuredWork ?: emptyList(),
-                work = work?.items ?: emptyList(),
-                about = about?.about,
-                contact = contact?.contact,
+                apiVersion = home?.version ?: work?.version ?: about?.version ?: contact?.version,
+                latestGeneratedAt = listOfNotNull(
+                    cachedHome.generatedAt,
+                    cachedWork.generatedAt,
+                    cachedAbout.generatedAt,
+                    cachedContact.generatedAt,
+                ).maxOrNull(),
+                profile = home?.profile?.toUi(),
+                cta = home?.cta?.toUi(),
+                featuredWork = home?.featuredWork?.map { it.toUi() } ?: emptyList(),
+                work = work?.items?.map { it.toUi() } ?: emptyList(),
+                about = about?.about?.toUi(),
+                contact = contact?.contact?.toUi(),
             )
 
             val refreshedHome = runCatching { repository.refreshHome() }.getOrNull()
@@ -66,40 +76,37 @@ class MainViewModel(private val repository: PortfolioRepository) : ViewModel() {
             val refreshedAbout = runCatching { repository.refreshAbout() }.getOrNull()
             val refreshedContact = runCatching { repository.refreshContact() }.getOrNull()
 
-            val refreshFailures = buildList {
-                if (refreshedHome == null) add("Home")
-                if (refreshedWork == null) add("Work")
-                if (refreshedAbout == null) add("About")
-                if (refreshedContact == null) add("Contact")
-            }
-
-            val staleSections = buildList {
-                if (cachedHome.value != null && cachedHome.isStale) add("Home")
-                if (cachedWork.value != null && cachedWork.isStale) add("Work")
-                if (cachedAbout.value != null && cachedAbout.isStale) add("About")
-                if (cachedContact.value != null && cachedContact.isStale) add("Contact")
-            }
-
             val hasAnyData = (refreshedHome ?: home) != null || (refreshedWork ?: work) != null
-            val syncMessage = when {
-                refreshFailures.isEmpty() && staleSections.isEmpty() -> null
-                refreshFailures.isEmpty() && staleSections.isNotEmpty() ->
-                    "Cached data currently shown for: ${staleSections.joinToString(", ")}."
-                hasAnyData -> "Couldn't refresh ${refreshFailures.joinToString(", ")}. Showing cached data."
-                else -> null
-            }
+            val latestGeneratedAt = listOfNotNull(
+                refreshedHome?.generatedAt ?: cachedHome.generatedAt,
+                refreshedWork?.generatedAt ?: cachedWork.generatedAt,
+                refreshedAbout?.generatedAt ?: cachedAbout.generatedAt,
+                refreshedContact?.generatedAt ?: cachedContact.generatedAt,
+            ).maxOrNull()
+
+            val syncMessage = null
 
             _state.value = MainUiState(
                 loading = false,
                 error = if (!hasAnyData) "Unable to load portfolio data" else null,
                 syncMessage = syncMessage,
-                profile = (refreshedHome ?: home)?.profile,
-                cta = (refreshedHome ?: home)?.cta,
-                featuredWork = (refreshedHome ?: home)?.featuredWork ?: emptyList(),
-                work = (refreshedWork ?: work)?.items ?: emptyList(),
-                about = (refreshedAbout ?: about)?.about,
-                contact = (refreshedContact ?: contact)?.contact,
+                apiVersion = refreshedHome?.version ?: refreshedWork?.version ?: refreshedAbout?.version ?: refreshedContact?.version
+                    ?: home?.version ?: work?.version ?: about?.version ?: contact?.version,
+                latestGeneratedAt = latestGeneratedAt,
+                profile = (refreshedHome ?: home)?.profile?.toUi(),
+                cta = (refreshedHome ?: home)?.cta?.toUi(),
+                featuredWork = (refreshedHome ?: home)?.featuredWork?.map { it.toUi() } ?: emptyList(),
+                work = (refreshedWork ?: work)?.items?.map { it.toUi() } ?: emptyList(),
+                about = (refreshedAbout ?: about)?.about?.toUi(),
+                contact = (refreshedContact ?: contact)?.contact?.toUi(),
             )
+        }
+    }
+
+    fun clearCacheAndRefresh() {
+        viewModelScope.launch {
+            repository.clearCache()
+            refresh()
         }
     }
 }

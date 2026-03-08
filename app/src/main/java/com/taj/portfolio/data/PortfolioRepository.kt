@@ -3,6 +3,7 @@ package com.taj.portfolio.data
 import com.google.gson.Gson
 import com.taj.portfolio.data.cache.CacheBlobEntity
 import com.taj.portfolio.data.cache.CacheDao
+import java.time.Instant
 
 class PortfolioRepository(
     private val api: PortfolioApi,
@@ -24,15 +25,26 @@ class PortfolioRepository(
     suspend fun getCachedDetail(slug: String): CachedResult<WorkDetailResponse> =
         get(detailKey(slug), WorkDetailResponse::class.java, DETAIL_MAX_AGE_MS)
 
-    suspend fun refreshHome(): HomeResponse = api.getHome().also { put(KEY_HOME, it) }
-    suspend fun refreshWork(): WorkListResponse = api.getWork().also { put(KEY_WORK, it) }
-    suspend fun refreshAbout(): AboutResponse = api.getAbout().also { put(KEY_ABOUT, it) }
-    suspend fun refreshContact(): ContactResponse = api.getContact().also { put(KEY_CONTACT, it) }
+    suspend fun refreshHome(): HomeResponse =
+        api.getHome().toDomain().also { validateVersion(it); put(KEY_HOME, it) }
+
+    suspend fun refreshWork(): WorkListResponse =
+        api.getWork().toDomain().also { validateVersion(it); put(KEY_WORK, it) }
+
+    suspend fun refreshAbout(): AboutResponse =
+        api.getAbout().toDomain().also { validateVersion(it); put(KEY_ABOUT, it) }
+
+    suspend fun refreshContact(): ContactResponse =
+        api.getContact().toDomain().also { validateVersion(it); put(KEY_CONTACT, it) }
+
     suspend fun refreshDetail(slug: String): WorkDetailResponse =
-        api.getWorkDetail(slug).also { put(detailKey(slug), it) }
+        api.getWorkDetail(slug).toDomain().also { validateVersion(it); put(detailKey(slug), it) }
+
+    suspend fun clearCache() = cacheDao.clearAll()
 
     private suspend fun put(key: String, payload: Any) {
-        val now = System.currentTimeMillis()
+        val generatedAtEpoch = (payload as? MobileEnvelope)?.generatedAt?.let(::toEpochMillis)
+        val now = generatedAtEpoch ?: System.currentTimeMillis()
         cacheDao.deleteOlderThan(now - HARD_RETENTION_MS)
         cacheDao.put(
             CacheBlobEntity(
@@ -54,12 +66,26 @@ class PortfolioRepository(
             value = parsed,
             isStale = isCacheStale(cached.updatedAt, System.currentTimeMillis(), maxAgeMs),
             updatedAt = cached.updatedAt,
+            generatedAt = (parsed as? MobileEnvelope)?.generatedAt,
         )
     }
 
     private fun detailKey(slug: String): String = "$KEY_DETAIL_PREFIX$slug"
 
+    private fun validateVersion(envelope: MobileEnvelope) {
+        val rawVersion = envelope.version.trim()
+        val major = rawVersion.substringBefore(".")
+        if (major != SUPPORTED_API_MAJOR) {
+            throw IllegalStateException(
+                "Unsupported API version: $rawVersion (expected major $SUPPORTED_API_MAJOR)",
+            )
+        }
+    }
+
+    private fun toEpochMillis(value: String): Long? = runCatching { Instant.parse(value).toEpochMilli() }.getOrNull()
+
     private companion object {
+        const val SUPPORTED_API_MAJOR = "1"
         const val KEY_HOME = "home"
         const val KEY_WORK = "work"
         const val KEY_ABOUT = "about"
@@ -78,4 +104,5 @@ data class CachedResult<T>(
     val value: T?,
     val isStale: Boolean,
     val updatedAt: Long? = null,
+    val generatedAt: String? = null,
 )
