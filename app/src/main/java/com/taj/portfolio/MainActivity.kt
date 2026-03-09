@@ -27,6 +27,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -412,6 +413,7 @@ internal fun BottomNavBar(navController: NavHostController) {
         modifier = Modifier
             .fillMaxWidth()
             .height(80.dp)
+            .navigationBarsPadding()
             .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.96f)),
     ) {
         val slotWidth = maxWidth / topDestinations.size
@@ -1542,6 +1544,5 @@ private fun cleanDetailText(value: String): String {
 private fun showBottomBar(): Boolean {
     return true
 }
-
 
 
