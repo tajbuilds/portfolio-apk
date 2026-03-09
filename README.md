@@ -8,6 +8,19 @@ Native Android app for Taj's portfolio API (`https://tajs.io/api/mobile/*`).
 - Android SDK (API 36 recommended)
 - `adb` available in `PATH`
 
+## Machine-specific Java Setup
+
+Keep `org.gradle.java.home` out of this repository and set it per machine in user-level Gradle config:
+
+- Linux: `~/.gradle/gradle.properties`
+- Windows: `%USERPROFILE%\\.gradle\\gradle.properties`
+
+Example:
+
+```properties
+org.gradle.java.home=/path/to/jdk-17
+```
+
 ## Local Run (Step-by-step)
 
 1. Build debug APK:
