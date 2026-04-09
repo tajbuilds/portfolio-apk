@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -78,6 +79,7 @@ import androidx.compose.material3.AssistChip
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.CardElevation
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ElevatedCard
 import androidx.compose.material3.FilterChip
@@ -145,8 +147,10 @@ import com.taj.portfolio.data.cache.AppDatabase
 import com.taj.portfolio.ui.model.WorkDetailUi
 import com.taj.portfolio.ui.model.WorkSummaryUi
 import com.taj.portfolio.ui.theme.PortfolioTheme
+import com.taj.portfolio.ui.theme.AppTheme
 import com.taj.portfolio.ui.theme.ThemeMode
 import com.taj.portfolio.ui.theme.ThemePreferences
+import com.taj.portfolio.ui.theme.appCardColors
 import retrofit2.Retrofit
 import retrofit2.converter.gson.GsonConverterFactory
 import kotlinx.coroutines.launch
@@ -507,6 +511,157 @@ private fun HeroParallaxModifier(listState: androidx.compose.foundation.lazy.Laz
 }
 
 @Composable
+private fun AppScreenColumn(
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    content: androidx.compose.foundation.lazy.LazyListScope.() -> Unit,
+) {
+    val spacing = AppTheme.spacing
+    PullRefreshContainer(refreshing = refreshing, onRefresh = onRefresh) {
+        LazyColumn(
+            contentPadding = PaddingValues(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.lg),
+            content = content,
+        )
+    }
+}
+
+@Composable
+private fun AppSectionHeader(
+    title: String,
+    subtitle: String? = null,
+    eyebrow: String? = null,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = AppTheme.spacing
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(spacing.xs),
+    ) {
+        eyebrow?.let {
+            Text(
+                text = it.uppercase(),
+                style = MaterialTheme.typography.labelMedium,
+                color = MaterialTheme.colorScheme.primary,
+            )
+        }
+        Text(title, style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
+        subtitle?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun AppCard(
+    modifier: Modifier = Modifier,
+    elevation: CardElevation = CardDefaults.cardElevation(defaultElevation = AppTheme.elevations.medium),
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    ElevatedCard(
+        modifier = modifier,
+        colors = appCardColors(),
+        elevation = elevation,
+        shape = MaterialTheme.shapes.medium,
+        content = content,
+    )
+}
+
+@Composable
+private fun AppSupportLabel(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    Text(
+        text = text.uppercase(),
+        modifier = modifier,
+        style = MaterialTheme.typography.labelMedium,
+        color = MaterialTheme.colorScheme.onSurfaceVariant,
+    )
+}
+
+@Composable
+private fun AppOutlinedCard(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    Card(
+        modifier = modifier,
+        shape = MaterialTheme.shapes.large,
+        border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
+        content = content,
+    )
+}
+
+@Composable
+private fun AppCardSection(
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val spacing = AppTheme.spacing
+    Column(
+        modifier = modifier.padding(spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        content = content,
+    )
+}
+
+@Composable
+private fun AppStatePane(
+    title: String,
+    body: String? = null,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+    icon: androidx.compose.ui.graphics.vector.ImageVector = Icons.Default.Info,
+) {
+    val spacing = AppTheme.spacing
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .padding(spacing.lg),
+        horizontalAlignment = Alignment.CenterHorizontally,
+        verticalArrangement = Arrangement.Center,
+    ) {
+        AppCard(
+            modifier = Modifier.fillMaxWidth(),
+            elevation = CardDefaults.cardElevation(defaultElevation = AppTheme.elevations.low),
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.xl, vertical = spacing.xxl),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp),
+                )
+                Text(title, style = MaterialTheme.typography.titleLarge, fontWeight = FontWeight.SemiBold)
+                body?.let {
+                    Text(
+                        text = it,
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                if (actionLabel != null && onAction != null) {
+                    Button(onClick = onAction, modifier = Modifier.padding(top = spacing.sm)) {
+                        Text(actionLabel)
+                    }
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun HomeScreen(
     state: MainUiState,
     onRetry: () -> Unit,
@@ -517,90 +672,102 @@ private fun HomeScreen(
     if (state.loading && state.profile == null) return FullScreenLoading("Loading portfolio...")
     if (state.error != null && state.profile == null) return FullScreenError(state.error, onRetry)
     val listState = rememberLazyListState()
+    val spacing = AppTheme.spacing
 
     PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
         LazyColumn(
             state = listState,
-            contentPadding = PaddingValues(16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp),
+            contentPadding = PaddingValues(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.lg),
         ) {
-        if (!state.syncMessage.isNullOrBlank()) {
-            item { SyncBanner(message = state.syncMessage) }
-        }
-        item {
-            Card(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clip(RoundedCornerShape(20.dp))
-                    .then(HeroParallaxModifier(listState)),
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.2f)),
-            ) {
-                Column(
+            if (!state.syncMessage.isNullOrBlank()) {
+                item { SyncBanner(message = state.syncMessage) }
+            }
+            item {
+                AppOutlinedCard(
                     modifier = Modifier
-                        .background(
-                            Brush.verticalGradient(
-                                colors = listOf(
-                                    MaterialTheme.colorScheme.surfaceVariant,
-                                    MaterialTheme.colorScheme.surface,
-                                ),
-                            ),
-                        )
-                        .padding(18.dp),
+                        .fillMaxWidth()
+                        .then(HeroParallaxModifier(listState)),
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
+                    Column(
+                        modifier = Modifier
+                            .background(
+                                Brush.verticalGradient(
+                                    colors = listOf(
+                                        MaterialTheme.colorScheme.surfaceVariant,
+                                        MaterialTheme.colorScheme.surface,
+                                    ),
+                                ),
+                            )
+                            .padding(spacing.xl),
+                        verticalArrangement = Arrangement.spacedBy(spacing.md),
                     ) {
-                        NetworkImage(
-                            model = state.profile?.avatarUrl?.let(::absoluteUrl),
-                            contentDescription = state.profile?.name,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier
-                                .size(72.dp)
-                                .clip(CircleShape),
-                        )
-                        Column {
-                            Text(
-                                state.profile?.name.orEmpty(),
-                                style = MaterialTheme.typography.headlineSmall,
-                                fontWeight = FontWeight.Bold,
+                        AppSupportLabel("Profile")
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                            verticalAlignment = Alignment.CenterVertically,
+                        ) {
+                            NetworkImage(
+                                model = state.profile?.avatarUrl?.let(::absoluteUrl),
+                                contentDescription = state.profile?.name,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier
+                                    .size(72.dp)
+                                    .clip(CircleShape),
                             )
-                            Text(state.profile?.role.orEmpty(), style = MaterialTheme.typography.titleMedium)
-                            Text(
-                                state.profile?.location.orEmpty(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
+                            Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                                Text(
+                                    state.profile?.name.orEmpty(),
+                                    style = MaterialTheme.typography.headlineSmall,
+                                    fontWeight = FontWeight.Bold,
+                                )
+                                Text(state.profile?.role.orEmpty(), style = MaterialTheme.typography.titleMedium)
+                                Text(
+                                    state.profile?.location.orEmpty(),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
                         }
+                        Text(
+                            state.profile?.tagline.orEmpty(),
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                        Text(
+                            "Shipping reliable product experiences across web, mobile, and ML workflows.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
-                    Text(
-                        state.profile?.tagline.orEmpty(),
-                        modifier = Modifier.padding(top = 8.dp),
-                        maxLines = 2,
-                        overflow = TextOverflow.Ellipsis,
+                }
+            }
+            item {
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.Bottom,
+                ) {
+                    AppSectionHeader(
+                        title = "Featured Work",
+                        subtitle = "Selected case studies and recent platform work.",
+                        eyebrow = "Portfolio",
                     )
                     Text(
-                        "Shipping reliable product experiences across web, mobile, and ML workflows.",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 6.dp),
-                        maxLines = 3,
-                        overflow = TextOverflow.Ellipsis,
+                        "See all",
+                        color = MaterialTheme.colorScheme.primary,
+                        style = MaterialTheme.typography.labelLarge,
+                        modifier = Modifier
+                            .clip(MaterialTheme.shapes.small)
+                            .clickable { onOpenWork() }
+                            .padding(horizontal = spacing.sm, vertical = spacing.xs),
                     )
                 }
             }
-        }
-        item {
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                Text("Featured Work", style = MaterialTheme.typography.titleLarge)
-                Text("See all", color = MaterialTheme.colorScheme.primary, modifier = Modifier.clickable { onOpenWork() })
-            }
-        }
             itemsIndexed(state.featuredWork, key = { _, item -> item.slug }) { index, item ->
                 StaggeredReveal(index = index) {
                     WorkCard(
@@ -623,20 +790,20 @@ private fun WorkScreen(
 ) {
     if (state.loading && state.work.isEmpty()) return FullScreenLoading("Loading projects...")
     if (state.error != null && state.work.isEmpty()) return FullScreenError(state.error, onRetry)
+    val spacing = AppTheme.spacing
 
     PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(contentPadding = PaddingValues(spacing.lg), verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
             if (!state.syncMessage.isNullOrBlank()) {
                 item { SyncBanner(message = state.syncMessage) }
             }
             item {
-                Text(
-                    "Work",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
+                AppSectionHeader(
+                    title = "Work",
+                    subtitle = "Case studies and architecture outcomes",
+                    eyebrow = "Portfolio",
                     modifier = Modifier.testTag("work-screen-title"),
                 )
-                Text("Case studies and architecture outcomes", style = MaterialTheme.typography.bodyMedium)
             }
             itemsIndexed(state.work, key = { _, item -> item.slug }) { index, item ->
                 StaggeredReveal(index = index) {
@@ -655,6 +822,7 @@ private fun WorkScreen(
 @OptIn(ExperimentalSharedTransitionApi::class)
 private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) {
     val imageLoader = rememberSvgImageLoader()
+    val spacing = AppTheme.spacing
     val interactionSource = remember { MutableInteractionSource() }
     val isPressed by interactionSource.collectIsPressedAsState()
     val scale by animateFloatAsState(
@@ -666,7 +834,7 @@ private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) 
         item.coverImageUrl.contains("tajinder-singh-portrait", ignoreCase = true)
     val coverModel = item.coverImageUrl.takeIf { it.isNotBlank() && !hasGenericAvatarCover }?.let(::absoluteUrl)
 
-    ElevatedCard(
+    AppCard(
         modifier = Modifier
             .fillMaxWidth()
             .testTag(cardTag)
@@ -679,12 +847,8 @@ private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) 
                 indication = null,
                 onClick = onClick,
             ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
-        colors = CardDefaults.elevatedCardColors(
-            containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-        ),
     ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Column(modifier = Modifier.padding(spacing.lg), verticalArrangement = Arrangement.spacedBy(spacing.md)) {
             if (coverModel != null) {
                 val sharedScope = LocalSharedTransitionScope.current
                 val animatedScope = LocalAnimatedVisibilityScope.current
@@ -698,7 +862,7 @@ private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) 
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(160.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(MaterialTheme.shapes.small)
                                 .sharedElement(
                                     sharedContentState = rememberSharedContentState(key = "work-cover-${item.slug}"),
                                     animatedVisibilityScope = animatedScope,
@@ -711,10 +875,10 @@ private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) 
                         model = coverModel,
                         contentDescription = item.title,
                         contentScale = ContentScale.Crop,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .height(160.dp)
-                            .clip(RoundedCornerShape(12.dp)),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp)
+                                .clip(MaterialTheme.shapes.small),
                     )
                 }
             } else {
@@ -722,7 +886,7 @@ private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) 
                     modifier = Modifier
                         .fillMaxWidth()
                         .height(160.dp)
-                        .clip(RoundedCornerShape(12.dp))
+                        .clip(MaterialTheme.shapes.small)
                         .background(
                             Brush.linearGradient(
                                 colors = listOf(
@@ -731,7 +895,7 @@ private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) 
                                 ),
                             ),
                         )
-                        .padding(12.dp),
+                        .padding(spacing.md),
                     contentAlignment = Alignment.BottomStart,
                 ) {
                     Text(
@@ -750,19 +914,36 @@ private fun WorkCard(item: WorkSummaryUi, cardTag: String, onClick: () -> Unit) 
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
-            Text(item.role, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-            Text(item.timeline, style = MaterialTheme.typography.bodySmall)
-            Text("Updated ${item.updatedAt}", style = MaterialTheme.typography.labelSmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(item.role, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    item.timeline,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            Text(
+                "Updated ${item.updatedAt}",
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
                 item.tags.forEach { tag -> AnimatedTagChip(tag = tag) }
             }
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text("View case study", color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.labelLarge)
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(spacing.xs)) {
+                Text(
+                    "View case study",
+                    color = MaterialTheme.colorScheme.primary,
+                    style = MaterialTheme.typography.labelLarge,
+                )
                 Icon(
                     imageVector = Icons.AutoMirrored.Filled.OpenInNew,
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(16.dp),
+                    modifier = Modifier.size(14.dp),
                 )
             }
         }
@@ -781,6 +962,7 @@ private fun WorkDetailScreen(slug: String, state: WorkDetailUiState, onRetry: ()
 private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessage: String?) {
     val context = LocalContext.current
     val imageLoader = rememberSvgImageLoader()
+    val spacing = AppTheme.spacing
     val hasGenericAvatarCover = item.coverImageUrl.contains("tajinder-singh-portrait", ignoreCase = true)
     val coverModel = item.coverImageUrl.takeIf { it.isNotBlank() && !hasGenericAvatarCover }?.let(::absoluteUrl)
     val sections = listOf(
@@ -791,7 +973,7 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
         "Learnings" to item.sections?.learnings,
     ).filter { (_, content) -> !content.isNullOrBlank() }
 
-    LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    LazyColumn(contentPadding = PaddingValues(spacing.lg), verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
         if (!syncMessage.isNullOrBlank()) {
             item { SyncBanner(message = syncMessage) }
         }
@@ -800,13 +982,14 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
                 verticalAlignment = Alignment.CenterVertically,
                 modifier = Modifier
                     .testTag("work-detail-back")
+                    .clip(MaterialTheme.shapes.small)
                     .clickable { onBack() },
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                Spacer(Modifier.width(8.dp))
+                Spacer(Modifier.width(spacing.sm))
                 Text("Back", color = MaterialTheme.colorScheme.primary)
             }
-            Spacer(Modifier.height(8.dp))
+            Spacer(Modifier.height(spacing.sm))
             if (coverModel != null) {
                 val sharedScope = LocalSharedTransitionScope.current
                 val animatedScope = LocalAnimatedVisibilityScope.current
@@ -820,7 +1003,7 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .height(180.dp)
-                                .clip(RoundedCornerShape(12.dp))
+                                .clip(MaterialTheme.shapes.small)
                                 .sharedElement(
                                     sharedContentState = rememberSharedContentState(key = "work-cover-${item.slug}"),
                                     animatedVisibilityScope = animatedScope,
@@ -836,11 +1019,12 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(180.dp)
-                            .clip(RoundedCornerShape(12.dp)),
+                            .clip(MaterialTheme.shapes.small),
                     )
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(spacing.sm))
             }
+            AppSupportLabel("Case Study")
             Text(
                 item.title,
                 style = MaterialTheme.typography.headlineSmall,
@@ -850,8 +1034,17 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
                 overflow = TextOverflow.Ellipsis,
             )
             Text(item.summary, style = MaterialTheme.typography.bodyLarge, maxLines = 6, overflow = TextOverflow.Ellipsis)
-            Text(item.role, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
-            Text(item.timeline, style = MaterialTheme.typography.bodyMedium)
+            Row(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(item.role, style = MaterialTheme.typography.titleSmall, color = MaterialTheme.colorScheme.primary)
+                Text(
+                    item.timeline,
+                    style = MaterialTheme.typography.labelMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
             Text(
                 "Published ${item.publishedAt} • Updated ${item.updatedAt}",
                 style = MaterialTheme.typography.labelMedium,
@@ -859,14 +1052,14 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
             )
         }
         item {
-            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Row(modifier = Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
                 item.tags.forEach { tag -> AnimatedTagChip(tag = tag) }
             }
         }
         items(sections) { (title, content) -> SectionCard(title = title, content = content.orEmpty()) }
         item {
             item.links?.let { links ->
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
                     links.liveDemo?.takeIf { it.isNotBlank() }?.let { liveDemo ->
                         Button(onClick = { openUrl(context, liveDemo) }) {
                             Text("Live Demo")
@@ -878,17 +1071,13 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
                         }
                     }
                 }
-                Spacer(Modifier.height(8.dp))
+                Spacer(Modifier.height(spacing.sm))
             }
-            HorizontalDivider(modifier = Modifier.padding(vertical = 4.dp))
-            ElevatedCard(
+            HorizontalDivider(modifier = Modifier.padding(vertical = spacing.xs))
+            AppCard(
                 modifier = Modifier.fillMaxWidth(),
-                colors = appElevatedCardColors(),
             ) {
-                Column(
-                    modifier = Modifier.padding(14.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
+                AppCardSection {
                     Text(
                         "Case Study Notes",
                         style = MaterialTheme.typography.titleMedium,
@@ -910,11 +1099,10 @@ private fun WorkDetailContent(item: WorkDetailUi, onBack: () -> Unit, syncMessag
 
 @Composable
 private fun SectionCard(title: String, content: String) {
-    ElevatedCard(
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = appElevatedCardColors(),
     ) {
-        Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        AppCardSection {
             Text(title, style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
             Text(cleanDetailText(content), style = MaterialTheme.typography.bodyMedium)
         }
@@ -928,57 +1116,92 @@ private fun AboutScreen(
     onPullToRefresh: () -> Unit,
 ) {
     val context = LocalContext.current
+    val spacing = AppTheme.spacing
     if (state.loading && state.about == null) return FullScreenLoading("Loading about...")
     if (state.error != null && state.about == null) return FullScreenError(state.error, onRetry)
 
     val about = state.about
     PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
-        LazyColumn(contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LazyColumn(contentPadding = PaddingValues(spacing.lg), verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
             if (!state.syncMessage.isNullOrBlank()) {
                 item { SyncBanner(message = state.syncMessage) }
             }
             item {
-                NetworkImage(
-                    model = about?.avatarUrl?.let(::absoluteUrl),
-                    contentDescription = about?.name,
-                    modifier = Modifier
-                        .size(88.dp)
-                        .padding(bottom = 10.dp),
-                )
-                Text(about?.name.orEmpty(), style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(about?.headline.orEmpty(), style = MaterialTheme.typography.titleMedium, maxLines = 2, overflow = TextOverflow.Ellipsis)
-                Text(about?.bio.orEmpty(), modifier = Modifier.padding(top = 8.dp), maxLines = 8, overflow = TextOverflow.Ellipsis)
-            }
-            item {
-                Text("Skills", style = MaterialTheme.typography.titleMedium)
-                Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
-                    about?.skills?.forEach { skill ->
-                        AnimatedTagChip(tag = skill, modifier = Modifier.padding(end = 8.dp))
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    AppCardSection {
+                        AppSupportLabel("About")
+                        NetworkImage(
+                            model = about?.avatarUrl?.let(::absoluteUrl),
+                            contentDescription = about?.name,
+                            modifier = Modifier
+                                .size(88.dp)
+                                .padding(bottom = spacing.sm),
+                        )
+                        AppSectionHeader(
+                            title = about?.name.orEmpty(),
+                            subtitle = about?.headline.orEmpty(),
+                        )
+                        Text(
+                            about?.bio.orEmpty(),
+                            style = MaterialTheme.typography.bodyLarge,
+                            maxLines = 8,
+                            overflow = TextOverflow.Ellipsis,
+                        )
                     }
                 }
             }
             item {
-                Text("Focus Areas", style = MaterialTheme.typography.titleMedium)
-                Column(verticalArrangement = Arrangement.spacedBy(6.dp)) { about?.focusAreas?.forEach { area -> Text("- $area") } }
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    AppCardSection {
+                        AppSupportLabel("Capabilities")
+                        Text("Skills", style = MaterialTheme.typography.titleMedium)
+                        Row(modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                            about?.skills?.forEach { skill ->
+                                AnimatedTagChip(tag = skill, modifier = Modifier.padding(end = spacing.sm))
+                            }
+                        }
+                    }
+                }
+            }
+            item {
+                AppCard(modifier = Modifier.fillMaxWidth()) {
+                    AppCardSection {
+                        AppSupportLabel("Priorities")
+                        Text("Focus Areas", style = MaterialTheme.typography.titleMedium)
+                        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                            about?.focusAreas?.forEach { area ->
+                                Text("- $area", style = MaterialTheme.typography.bodyMedium)
+                            }
+                        }
+                    }
+                }
             }
             item {
                 val socialLinks = about?.social.orEmpty()
                 if (socialLinks.isNotEmpty()) {
-                    Text("Social", style = MaterialTheme.typography.titleMedium)
-                    Column(verticalArrangement = Arrangement.spacedBy(6.dp)) {
-                        socialLinks.forEach { social ->
-                            Row(
-                                modifier = Modifier.clickable { openUrl(context, social.url) },
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.spacedBy(6.dp),
-                            ) {
-                                Text(social.label, color = MaterialTheme.colorScheme.primary)
-                                Icon(
-                                    imageVector = Icons.AutoMirrored.Filled.OpenInNew,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(16.dp),
-                                )
+                    AppCard(modifier = Modifier.fillMaxWidth()) {
+                        AppCardSection {
+                            AppSupportLabel("Links")
+                            Text("Social", style = MaterialTheme.typography.titleMedium)
+                            Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+                                socialLinks.forEach { social ->
+                                    Row(
+                                        modifier = Modifier
+                                            .clip(MaterialTheme.shapes.small)
+                                            .clickable { openUrl(context, social.url) }
+                                            .padding(vertical = spacing.xs),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                                    ) {
+                                        Text(social.label, color = MaterialTheme.colorScheme.primary)
+                                        Icon(
+                                            imageVector = Icons.AutoMirrored.Filled.OpenInNew,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.primary,
+                                            modifier = Modifier.size(14.dp),
+                                        )
+                                    }
+                                }
                             }
                         }
                     }
@@ -998,6 +1221,7 @@ private fun ContactScreen(
 ) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
+    val spacing = AppTheme.spacing
     if (state.loading && state.contact == null) return FullScreenLoading("Loading contact...")
     if (state.error != null && state.contact == null) return FullScreenError(state.error, onRetry)
 
@@ -1014,10 +1238,9 @@ private fun ContactScreen(
 
     PullRefreshContainer(refreshing = state.loading, onRefresh = onPullToRefresh) {
         LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp),
+            modifier = Modifier.fillMaxSize(),
+            contentPadding = PaddingValues(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.lg),
         ) {
             item {
                 if (!state.syncMessage.isNullOrBlank()) {
@@ -1025,37 +1248,41 @@ private fun ContactScreen(
                 }
             }
             item {
-                Text("Contact", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-                Text(
-                    "Reach out directly or open the embedded form.",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                AppSectionHeader(
+                    title = "Contact",
+                    subtitle = "Reach out directly or open the embedded form.",
+                    eyebrow = "Connect",
                 )
             }
             item {
-                ElevatedCard(
+                AppCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = appElevatedCardColors(),
                 ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AppCardSection {
+                        AppSupportLabel("Direct")
                         Text(contact?.email.orEmpty(), style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "Use email for quick reach-out or continue with the structured form below.",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        )
                         Button(onClick = {
                             val intent = Intent(Intent.ACTION_SENDTO, Uri.parse("mailto:${contact?.email.orEmpty()}"))
                             runCatching { context.startActivity(intent) }
                         }) {
                             Icon(Icons.Default.Mail, contentDescription = null)
-                            Spacer(Modifier.width(8.dp))
+                            Spacer(Modifier.width(spacing.sm))
                             Text("Email Me")
                         }
                     }
                 }
             }
             item {
-                ElevatedCard(
+                AppCard(
                     modifier = Modifier.fillMaxWidth(),
-                    colors = appElevatedCardColors(),
                 ) {
-                    Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    AppCardSection {
+                        AppSupportLabel("Form")
                         Text("Send Message", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                         OutlinedTextField(
                             value = name,
@@ -1140,11 +1367,17 @@ private fun ContactScreen(
                             Text(if (submitting) "Sending..." else "Send Message")
                         }
                         submitStatus?.let { status ->
-                            Text(
-                                status,
-                                style = MaterialTheme.typography.bodySmall,
-                                color = if (submitError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
-                            )
+                            AppCard(
+                                modifier = Modifier.fillMaxWidth(),
+                                elevation = CardDefaults.cardElevation(defaultElevation = AppTheme.elevations.low),
+                            ) {
+                                Text(
+                                    status,
+                                    modifier = Modifier.padding(spacing.md),
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = if (submitError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary,
+                                )
+                            }
                         }
                         OutlinedButton(onClick = { onOpenContactForm(absoluteUrl("/contact/")) }) {
                             Text("Open Web Form Instead")
@@ -1160,16 +1393,15 @@ private fun ContactScreen(
             }
 
             items(contact?.links.orEmpty()) { link ->
-                ElevatedCard(
+                AppCard(
                     modifier = Modifier
                         .fillMaxWidth()
                         .clickable { openUrl(context, link.url) },
-                    colors = appElevatedCardColors(),
                 ) {
                     Row(
-                        modifier = Modifier.padding(12.dp),
+                        modifier = Modifier.padding(spacing.md),
                         verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.xs),
                     ) {
                         Text(link.label, color = MaterialTheme.colorScheme.primary)
                         Icon(
@@ -1192,28 +1424,28 @@ private fun SettingsScreen(
     onThemeModeChange: (ThemeMode) -> Unit,
 ) {
     val context = LocalContext.current
+    val spacing = AppTheme.spacing
     LazyColumn(
         modifier = Modifier
             .fillMaxSize()
-            .padding(16.dp),
-        verticalArrangement = Arrangement.spacedBy(12.dp),
+            .padding(spacing.lg),
+        verticalArrangement = Arrangement.spacedBy(spacing.lg),
     ) {
         item {
-            Text("Settings", style = MaterialTheme.typography.headlineMedium, fontWeight = FontWeight.Bold)
-            Text(
-                "Customize appearance and app behavior.",
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            AppSectionHeader(
+                title = "Settings",
+                subtitle = "Customize appearance and app behavior.",
+                eyebrow = "Preferences",
             )
         }
         item {
-            ElevatedCard(
+            AppCard(
                 modifier = Modifier.fillMaxWidth(),
-                colors = appElevatedCardColors(),
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                AppCardSection {
+                    AppSupportLabel("Appearance")
                     Text("Appearance", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Row(horizontalArrangement = Arrangement.spacedBy(spacing.sm)) {
                         ThemeMode.entries.forEach { mode ->
                             FilterChip(
                                 selected = themeMode == mode,
@@ -1237,11 +1469,11 @@ private fun SettingsScreen(
             }
         }
         item {
-            ElevatedCard(
+            AppCard(
                 modifier = Modifier.fillMaxWidth(),
-                colors = appElevatedCardColors(),
             ) {
-                Column(modifier = Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                AppCardSection {
+                    AppSupportLabel("Metadata")
                     Text("App", style = MaterialTheme.typography.titleMedium, fontWeight = FontWeight.SemiBold)
                     Text("Version ${BuildConfig.VERSION_NAME} (${BuildConfig.VERSION_CODE})")
                     Text("API contract ${state.apiVersion ?: "unknown"}")
@@ -1266,6 +1498,7 @@ private fun PullRefreshContainer(
     content: @Composable () -> Unit,
 ) {
     val pullToRefreshState = rememberPullToRefreshState()
+    val spacing = AppTheme.spacing
     val pullOffset = (pullToRefreshState.distanceFraction * 96f).coerceAtLeast(0f).dp
     PullToRefreshBox(
         isRefreshing = refreshing,
@@ -1336,10 +1569,12 @@ private fun AnimatedTagChip(tag: String, modifier: Modifier = Modifier) {
         onClick = {},
         interactionSource = interactionSource,
         label = { Text(tag) },
-        modifier = modifier.graphicsLayer {
-            scaleX = scale
-            scaleY = scale
-        },
+        modifier = modifier
+            .height(40.dp)
+            .graphicsLayer {
+                scaleX = scale
+                scaleY = scale
+            },
     )
 }
 
@@ -1411,11 +1646,12 @@ private var sharedSvgImageLoader: ImageLoader? = null
 @Composable
 private fun ContactFormScreen(url: String, onBack: () -> Unit) {
     val context = LocalContext.current
+    val spacing = AppTheme.spacing
     Column(
         modifier = Modifier
             .fillMaxSize()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
+            .padding(spacing.md),
+        verticalArrangement = Arrangement.spacedBy(spacing.sm),
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
@@ -1423,11 +1659,14 @@ private fun ContactFormScreen(url: String, onBack: () -> Unit) {
             horizontalArrangement = Arrangement.SpaceBetween,
         ) {
             Row(
-                modifier = Modifier.clickable(onClick = onBack),
+                modifier = Modifier
+                    .clip(MaterialTheme.shapes.small)
+                    .clickable(onClick = onBack)
+                    .padding(vertical = spacing.xs),
                 verticalAlignment = Alignment.CenterVertically,
             ) {
                 Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "Back")
-                Spacer(Modifier.width(6.dp))
+                Spacer(Modifier.width(spacing.xs))
                 Text("Back", color = MaterialTheme.colorScheme.primary)
             }
             IconButton(onClick = { openUrl(context, url) }) {
@@ -1455,14 +1694,14 @@ private fun ContactFormScreen(url: String, onBack: () -> Unit) {
 @Composable
 private fun SyncBanner(message: String?) {
     if (message.isNullOrBlank()) return
-    ElevatedCard(
+    val spacing = AppTheme.spacing
+    AppCard(
         modifier = Modifier.fillMaxWidth(),
-        colors = appElevatedCardColors(),
     ) {
         Row(
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp),
+            modifier = Modifier.padding(horizontal = spacing.md, vertical = spacing.md),
             verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Icon(
                 imageVector = Icons.Default.Info,
@@ -1480,29 +1719,22 @@ private fun SyncBanner(message: String?) {
 
 @Composable
 private fun FullScreenLoading(label: String) {
-    Column(
-        modifier = Modifier.fillMaxSize(),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        CircularProgressIndicator(modifier = Modifier.size(28.dp))
-        Text(label, modifier = Modifier.padding(top = 8.dp))
-    }
+    AppStatePane(
+        title = label,
+        body = "Preparing the latest content and assets.",
+        icon = Icons.Default.Info,
+    )
 }
 
 @Composable
 private fun FullScreenError(message: String?, onRetry: () -> Unit) {
-    Column(
-        modifier = Modifier
-            .fillMaxSize()
-            .padding(16.dp),
-        horizontalAlignment = Alignment.CenterHorizontally,
-        verticalArrangement = Arrangement.Center,
-    ) {
-        Text("Failed to load", style = MaterialTheme.typography.titleLarge)
-        Text(message.orEmpty(), modifier = Modifier.padding(top = 8.dp))
-        Button(onClick = onRetry, modifier = Modifier.padding(top = 12.dp)) { Text("Retry") }
-    }
+    AppStatePane(
+        title = "Failed to load",
+        body = message.orEmpty(),
+        actionLabel = "Retry",
+        onAction = onRetry,
+        icon = Icons.Default.Info,
+    )
 }
 
 private fun absoluteUrl(pathOrUrl: String): String {
@@ -1523,11 +1755,6 @@ private fun ThemeMode.label(): String = when (this) {
     ThemeMode.LIGHT -> "Light"
     ThemeMode.DARK -> "Dark"
 }
-
-@Composable
-private fun appElevatedCardColors() = CardDefaults.elevatedCardColors(
-    containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
-)
 
 private fun cleanDetailText(value: String): String {
     return value

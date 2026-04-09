@@ -1,15 +1,12 @@
 package com.taj.portfolio.ui.theme
 
 import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.material3.Typography
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.sp
 
 private val LightColors = lightColorScheme(
     primary = Color(0xFF0B57D0),
@@ -49,49 +46,6 @@ private val DarkColors = darkColorScheme(
     error = Color(0xFFFFB4AB),
 )
 
-private val AppTypography = Typography(
-    headlineLarge = TextStyle(
-        fontWeight = FontWeight.ExtraBold,
-        fontSize = 34.sp,
-        lineHeight = 40.sp,
-    ),
-    headlineMedium = TextStyle(
-        fontWeight = FontWeight.Bold,
-        fontSize = 28.sp,
-        lineHeight = 34.sp,
-    ),
-    headlineSmall = TextStyle(
-        fontWeight = FontWeight.Bold,
-        fontSize = 23.sp,
-        lineHeight = 30.sp,
-    ),
-    titleLarge = TextStyle(
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 20.sp,
-        lineHeight = 27.sp,
-    ),
-    titleMedium = TextStyle(
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 17.sp,
-        lineHeight = 24.sp,
-    ),
-    bodyLarge = TextStyle(
-        fontWeight = FontWeight.Normal,
-        fontSize = 16.sp,
-        lineHeight = 24.sp,
-    ),
-    bodyMedium = TextStyle(
-        fontWeight = FontWeight.Normal,
-        fontSize = 15.sp,
-        lineHeight = 22.sp,
-    ),
-    labelLarge = TextStyle(
-        fontWeight = FontWeight.SemiBold,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
-    ),
-)
-
 @Composable
 fun PortfolioTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
     val darkTheme = when (themeMode) {
@@ -100,9 +54,15 @@ fun PortfolioTheme(themeMode: ThemeMode, content: @Composable () -> Unit) {
         ThemeMode.DARK -> true
     }
 
-    MaterialTheme(
-        colorScheme = if (darkTheme) DarkColors else LightColors,
-        typography = AppTypography,
-        content = content,
-    )
+    CompositionLocalProvider(
+        LocalAppSpacing provides AppSpacing(),
+        LocalAppElevations provides AppElevations(),
+    ) {
+        MaterialTheme(
+            colorScheme = if (darkTheme) DarkColors else LightColors,
+            typography = AppTypography,
+            shapes = AppShapes,
+            content = content,
+        )
+    }
 }
